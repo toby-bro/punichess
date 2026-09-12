@@ -34,10 +34,10 @@ describe('summarise', () => {
 
   it('averages the centipawn loss and counts the labels', () => {
     const stats = new Stats();
-    stats.add('white', 0, 0);
-    stats.add('white', 40, 4);
-    stats.add('white', 200, 25);
-    const summary = stats.summary('white');
+    stats.add('you', 0, 0);
+    stats.add('you', 40, 4);
+    stats.add('you', 200, 25);
+    const summary = stats.summary('you');
     assert.equal(summary.moves, 3);
     assert.equal(summary.acpl, 80);
     assert.equal(summary.best, 1);
@@ -47,41 +47,42 @@ describe('summarise', () => {
 });
 
 describe('Stats', () => {
-  it('keeps the two sides apart', () => {
+  it('keeps the two players apart', () => {
     const stats = new Stats();
-    stats.add('white', 10, 1);
-    stats.add('black', 200, 20);
-    assert.equal(stats.acpl('white'), 10);
-    assert.equal(stats.acpl('black'), 200);
-    assert.equal(stats.summary('white').moves, 1);
+    stats.add('you', 10, 1);
+    stats.add('bot', 200, 20);
+    assert.equal(stats.acpl('you'), 10);
+    assert.equal(stats.acpl('bot'), 200);
+    assert.equal(stats.summary('you').moves, 1);
   });
 
   it('reports zero for a side that has not moved', () => {
-    assert.equal(new Stats().acpl('white'), 0);
+    assert.equal(new Stats().acpl('you'), 0);
   });
 
   it('never records a negative loss', () => {
     const stats = new Stats();
-    const entry = stats.add('white', -50, -5);
+    const entry = stats.add('you', -50, -5);
     assert.equal(entry.cpLoss, 0);
     assert.equal(entry.winLoss, 0);
   });
 
-  it('drops entries past a fork', () => {
+  it('keeps every attempt, including ones that were taken back', () => {
     const stats = new Stats();
-    stats.add('white', 10, 1);
-    stats.add('black', 20, 2);
-    stats.add('white', 300, 40);
-    stats.truncate(2);
-    assert.equal(stats.entries.length, 2);
-    assert.equal(stats.summary('white').blunder, 0);
+    stats.add('you', 0, 0);
+    stats.add('you', 400, 45);
+    stats.add('you', 0, 0);
+    const summary = stats.summary('you');
+    assert.equal(summary.moves, 3, 'the retry does not erase the blunder');
+    assert.equal(summary.blunder, 1);
+    assert.ok(summary.acpl > 100, 'and it still counts towards the average');
   });
 
   it('starts over on reset', () => {
     const stats = new Stats();
-    stats.add('white', 10, 1);
+    stats.add('you', 10, 1);
     stats.reset();
     assert.equal(stats.entries.length, 0);
-    assert.equal(stats.acpl('white'), 0);
+    assert.equal(stats.acpl('you'), 0);
   });
 });

@@ -6,7 +6,11 @@
  * abstract average.
  */
 
-import type { Color } from 'chessops/types';
+/**
+ * Who played a move. Not a colour: sides can be swapped mid-game, and your
+ * record should follow you rather than stay with the pieces.
+ */
+export type Actor = 'you' | 'bot';
 
 export type Judgement = 'best' | 'good' | 'inaccuracy' | 'mistake' | 'blunder';
 
@@ -33,11 +37,15 @@ export function classify(cpLoss: number, winLoss: number): Judgement {
   return cpLoss <= 0 ? 'best' : 'good';
 }
 
-export interface Entry {
-  readonly by: Color;
+/** A judged move, whoever played it. */
+export interface Scored {
   readonly cpLoss: number;
   readonly winLoss: number;
   readonly judgement: Judgement;
+}
+
+export interface Entry extends Scored {
+  readonly by: Actor;
 }
 
 export interface Summary {
@@ -61,7 +69,13 @@ const EMPTY: Summary = {
   blunder: 0,
 };
 
-/** Running accuracy for both sides. */
+/**
+ * Running accuracy for both players.
+ *
+ * Every move you submit is recorded, including ones you were sent back for.
+ * An average that quietly forgets the blunders you took back would flatter you
+ * about exactly the thing this app is for.
+ */
 export class Stats {
   #entries: Entry[] = [];
 
@@ -69,7 +83,7 @@ export class Stats {
     return this.#entries;
   }
 
-  add(by: Color, cpLoss: number, winLoss: number): Entry {
+  add(by: Actor, cpLoss: number, winLoss: number): Entry {
     const entry: Entry = {
       by,
       cpLoss: Math.max(0, cpLoss),
@@ -80,26 +94,21 @@ export class Stats {
     return entry;
   }
 
-  /** Forget everything from ply `length` onwards, after a fork or a take-back. */
-  truncate(length: number): void {
-    this.#entries = this.#entries.slice(0, Math.max(0, length));
-  }
-
   reset(): void {
     this.#entries = [];
   }
 
   /** Average centipawn loss for one side. */
-  acpl(by: Color): number {
+  acpl(by: Actor): number {
     return summarise(this.#entries.filter(entry => entry.by === by)).acpl;
   }
 
-  summary(by: Color): Summary {
+  summary(by: Actor): Summary {
     return summarise(this.#entries.filter(entry => entry.by === by));
   }
 }
 
-export function summarise(entries: readonly Entry[]): Summary {
+export function summarise(entries: readonly Scored[]): Summary {
   if (entries.length === 0) return EMPTY;
   const counts = { best: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0 };
   let total = 0;
