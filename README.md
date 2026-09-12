@@ -15,8 +15,25 @@ Two interruptions, armed by different rules:
 The bot never announces its errors. Spotting them is the entire point. A counter
 tracks how many you caught versus missed.
 
+When it stops you, your move is drawn as a **red arrow** and the position is put
+back. Nothing is explained yet. Ask to be shown and the best move appears in
+**green** beside it, and you can step through the whole variation on the board.
+
 Everything runs on the phone: Stockfish 18 compiled to WebAssembly, no server, no
 network after the first load.
+
+## Moving around the game
+
+`◀` `▶` step through the moves, `⏮` `⏭` jump to either end, and the arrow, Home
+and End keys do the same. Any move in the list can be clicked to jump to it.
+
+Going back is not just for looking. Play a move from an earlier position and the
+game **forks** there: the continuation is discarded and you carry on down the new
+line. Use _Play from here_ to branch without moving first — handy for handing an
+earlier position back to the bot.
+
+During the reveal the same controls walk the engine's variation instead of the
+game, and _Back to game_ returns you to your move so you can try again.
 
 ## Running it
 
