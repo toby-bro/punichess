@@ -80,43 +80,55 @@ button:disabled {
   cursor: default;
 }
 
-#moves {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 6px;
+/* ------------------------------------------------------------- move tree */
+
+.moves {
   margin: 0 0 10px;
   padding: 8px;
-  max-height: 5.4em;
+  max-height: 9em;
   overflow-y: auto;
-  list-style: none;
   background: var(--raised);
   border-radius: 6px;
   font-variant-numeric: tabular-nums;
+  line-height: 1.9;
 }
 
-#moves:empty {
-  display: none;
-}
-
-#moves li {
+.moves .move {
+  display: inline-block;
   padding: 1px 5px;
+  margin-right: 2px;
   border-radius: 4px;
   cursor: pointer;
 }
 
-#moves li.number {
-  color: var(--dim);
-  cursor: default;
-}
-
-#moves li.current {
+.moves .move.current {
   background: var(--edge);
   color: #fff;
 }
 
 /* A move the bot made wrong on purpose, once you have been shown it. */
-#moves li.error {
+.moves .move.bot-error {
+  color: #e08c3e;
+}
+
+/* A move you were warned about and played regardless: where to come back to. */
+.moves .move.played-anyway {
   color: var(--alarm);
+  font-weight: 600;
+  text-decoration: underline wavy currentColor;
+}
+
+/* Everything played from a position other than the first continuation. */
+.moves .variation {
+  margin: 2px 0 2px 14px;
+  padding-left: 8px;
+  border-left: 2px solid var(--edge);
+  font-size: 14px;
+  color: var(--dim);
+}
+
+.moves-empty {
+  color: var(--dim);
 }
 
 .bar {
@@ -201,6 +213,62 @@ button:disabled {
   height: 28px;
 }
 
+/* --------------------------------------------------------------------- pgn */
+
+#pgn-box {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  background: var(--raised);
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+#pgn-box summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+#pgn-text {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font:
+    13px/1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  resize: vertical;
+}
+
+.file-button {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  min-height: 44px;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: var(--raised);
+  cursor: pointer;
+}
+
+.file-button input {
+  display: none;
+}
+
+.pgn-status {
+  margin: 6px 0 0;
+  min-height: 1.2em;
+  color: var(--dim);
+}
+
+.pgn-status.bad {
+  color: var(--alarm);
+}
+
 /* ------------------------------------------------------------------ review */
 
 #review {
@@ -256,9 +324,22 @@ button:disabled {
 }
 
 .eval-mark {
-  cursor: pointer;
+  pointer-events: none;
   stroke: var(--bg);
   stroke-width: 1;
+}
+
+/* Invisible, on top, and the thing that actually catches taps. */
+.eval-surface {
+  fill: transparent;
+  cursor: pointer;
+}
+
+.eval-cursor {
+  stroke: var(--fg);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
+  pointer-events: none;
 }
 
 .eval-mark.inaccuracy {
@@ -290,6 +371,10 @@ button:disabled {
 }
 .review-move.blunder {
   border-left: 3px solid var(--alarm);
+}
+
+.review-move.selected {
+  background: var(--edge);
 }
 
 .review-head {

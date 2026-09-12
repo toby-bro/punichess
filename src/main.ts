@@ -7,20 +7,32 @@ import type { Key } from 'chessground/types';
 import type { Color } from 'chessops/types';
 
 import { type Policy, chooseMove } from './bot.ts';
+import { PositionCache } from './cache.ts';
 import { INITIAL_FEN, fenAfter, legalDests, noDests, outcomeOf, sanLine, turnOf } from './chess.ts';
-import { Engine } from './engine.ts';
-import { History } from './history.ts';
-import { type Verdict, isError, judge, thresholdsFor, winPercent } from './referee.ts';
+import { Engine, isCancelled } from './engine.ts';
+import { mountMoves } from './moves-view.ts';
+import { PgnImportError, fromPgn, pgnDate, toPgn } from './pgn.ts';
+import {
+  type Verdict,
+  isError,
+  judge,
+  needsVerification,
+  scoreOfMove,
+  thresholdsFor,
+  winPercent,
+} from './referee.ts';
 import { renderReview } from './review-view.ts';
 import { reviewGame } from './review.ts';
 import { mountSettings } from './settings-panel.ts';
 import { loadSettings, saveSettings, withColour } from './settings.ts';
 import { Stats } from './stats.ts';
+import { GameTree } from './tree.ts';
+import type { PvLine } from './uci.ts';
 
 /** Budget for move selection and for judging your move. */
 const SEARCH = { multiPV: 8, nodes: 1_000_000 } as const;
-/** A deeper budget, used before accusing you of anything. */
-const VERIFY = { multiPV: 8, nodes: 4_000_000 } as const;
+/** A deeper budget, used only when a verdict is too close to call. */
+const VERIFY = { multiPV: 8, nodes: 3_000_000 } as const;
 /**
  * A search over many more candidates, used only when hunting for a move that
  * hands you a forced mate: those are the worst moves in the position and never
@@ -31,20 +43,28 @@ const WIDE = { multiPV: 24, nodes: 700_000 } as const;
 const REVIEW = { multiPV: 3, nodes: 700_000 } as const;
 /** How many moves of the best line the reveal lets you step through. */
 const REVEAL_DEPTH = 8;
+/** How many alternatives to draw on the board during a reveal. */
+const REVEAL_ARROWS = 3;
+
+/** A move of yours that was rejected, and why. */
+interface Attempt {
+  readonly uci: string;
+  readonly verdict: Verdict;
+}
 
 /**
  * What the board is showing.
  *
- * `rejected` is your move taken back and drawn in red, with nothing explained
- * yet. `analysis` is the reveal: the best line, steppable move by move.
+ * `rejected` is your move or moves taken back and drawn in red, with nothing
+ * explained. `analysis` is the reveal: the best line, steppable move by move.
  */
 type Mode =
   | { readonly kind: 'play' }
-  | { readonly kind: 'rejected'; readonly uci: string; readonly verdict: Verdict }
+  | { readonly kind: 'rejected'; readonly attempts: readonly Attempt[] }
   | {
       readonly kind: 'analysis';
       readonly base: string;
-      readonly yourMove: string;
+      readonly attempts: readonly Attempt[];
       readonly line: readonly string[];
       readonly step: number;
     };
@@ -58,28 +78,37 @@ function element(id: string): HTMLElement {
 const statusEl = element('status');
 const scoreEl = element('score');
 const acplEl = element('acpl');
-const movesEl = element('moves');
 const reviewEl = element('review');
-const colourPicker = element('colour') as HTMLSelectElement;
+const pgnText = element('pgn-text') as HTMLTextAreaElement;
+const pgnStatusEl = element('pgn-status');
+const pgnFile = element('pgn-file') as HTMLInputElement;
 
-const other = (colour: Color): Color => (colour === 'white' ? 'black' : 'white');
 const buttons = {
   first: element('first'),
   back: element('back'),
   forward: element('forward'),
   last: element('last'),
   reveal: element('reveal'),
+  punish: element('punish'),
+  ignore: element('ignore'),
   resume: element('resume'),
   fork: element('fork'),
+  swap: element('swap'),
   review: element('review-run'),
   newGame: element('new-game'),
+  pgnExport: element('pgn-export'),
+  pgnImport: element('pgn-import'),
+  pgnCopy: element('pgn-copy'),
 };
 
+const other = (colour: Color): Color => (colour === 'white' ? 'black' : 'white');
 const square = (uci: string, end: 0 | 2): Key => uci.slice(end, end + 2) as Key;
-const arrow = (uci: string, brush: string): DrawShape => ({
+
+const arrow = (uci: string, brush: string, label?: string): DrawShape => ({
   orig: square(uci, 0),
   dest: square(uci, 2),
   brush,
+  ...(label === undefined ? {} : { label: { text: label } }),
 });
 
 function status(text: string, alarm = false): void {
@@ -87,31 +116,49 @@ function status(text: string, alarm = false): void {
   statusEl.classList.toggle('alarm', alarm);
 }
 
+/** How much a rejected move cost, written short enough to sit on an arrow. */
+function costLabel(verdict: Verdict): string {
+  if (verdict.missesMate) return verdict.mateIn === undefined ? 'mate' : `#${verdict.mateIn}`;
+  if (verdict.hangsMate) return '#';
+  return `−${(verdict.cpLoss / 100).toFixed(1)}`;
+}
+
+/** Say what a move cost, in the terms that actually fit the position. */
+function describeCost(verdict: Verdict): string {
+  if (verdict.missesMate) {
+    return verdict.mateIn === undefined
+      ? 'That lets a forced mate slip.'
+      : `That misses mate in ${verdict.mateIn}.`;
+  }
+  if (verdict.hangsMate) return 'That walks into a forced mate.';
+  return (
+    `That costs ${(verdict.cpLoss / 100).toFixed(1)} pawns, ` +
+    `about ${verdict.winLoss.toFixed(0)}% of your winning chances.`
+  );
+}
+
 async function main(): Promise<void> {
   const engine = new Engine(`${import.meta.env.BASE_URL}engine/stockfish-18-lite-single.js`);
-  let settings = loadSettings();
-  /** The colour you play, and the one the bot gets. Both change with the picker. */
-  let you: Color = settings.playAs;
-  let bot: Color = other(you);
-  const history = new History(INITIAL_FEN);
+  const cache = new PositionCache();
   const stats = new Stats();
+  let settings = loadSettings();
+  let tree = new GameTree();
 
-  const policy = (): Policy => ({
-    search: fen => engine.analyse(fen, SEARCH),
-    searchWide: fen => engine.analyse(fen, WIDE),
-    settings,
-  });
+  /** The colour you play. The bot takes the other one. */
+  let you: Color = settings.playAs;
 
   let mode: Mode = { kind: 'play' };
   let thinking = true;
   let blundersLeft = settings.blundersPerGame;
-  let retries = 0;
   let spotted = 0;
   let missed = 0;
-  /** Indices of the bot's errors you have been shown, for the move list. */
+  /** Bot errors you have been shown, so the move list can mark them. */
   const revealed = new Set<number>();
-  /** Analysis of the live position, started while you are thinking. */
-  let pending = Promise.resolve<Awaited<ReturnType<typeof engine.analyse>>>([]);
+  /**
+   * While set, the bot plays only best moves, but only below this node: step
+   * back above where you asked to be punished and it goes back to normal.
+   */
+  let punishFrom: number | undefined;
 
   const board: Api = Chessground(element('board'), {
     fen: INITIAL_FEN,
@@ -127,9 +174,9 @@ async function main(): Promise<void> {
     drawable: { enabled: true },
   });
 
+  let moves = mountMoves(element('moves'), tree, { onSelect: goTo, revealed });
   const panel = mountSettings(element('settings'), settings, changed => {
-    // Raising the allowance mid-game should make more errors possible, not
-    // fewer, so track the budget rather than resetting it.
+    // Raising the allowance mid-game should make more errors possible, not fewer.
     blundersLeft += changed.blundersPerGame - settings.blundersPerGame;
     settings = changed;
     saveSettings(settings);
@@ -137,38 +184,101 @@ async function main(): Promise<void> {
 
   status('Loading engine…');
   await engine.init();
-
   wireControls();
   await startGame();
 
-  // ---------------------------------------------------------------- rendering
+  // --------------------------------------------------------------- searching
+
+  /** Searches running right now, so the same position is never searched twice at once. */
+  const inFlight = new Map<string, Promise<readonly PvLine[]>>();
+
+  /**
+   * Search a position, reusing anything already known about it.
+   *
+   * The position you are about to move in is searched while you think, so by
+   * the time you move the answer is usually already here. Sharing the in-flight
+   * search is what makes that work: without it, moving quickly would queue a
+   * second identical search behind the first.
+   */
+  async function analyse(
+    fen: string,
+    options: { multiPV: number; nodes: number },
+  ): Promise<readonly PvLine[]> {
+    const remembered = cache.get(fen, options.nodes, options.multiPV);
+    if (remembered) return remembered;
+
+    const key = `${fen}|${options.multiPV}|${options.nodes}`;
+    const running = inFlight.get(key);
+    if (running) return running;
+
+    const search = engine
+      .analyse(fen, options)
+      .then(lines => {
+        cache.set(fen, lines, options.nodes, options.multiPV);
+        return lines;
+      })
+      .finally(() => inFlight.delete(key));
+    inFlight.set(key, search);
+    return search;
+  }
+
+  /** Start thinking about a position nobody has asked about yet. */
+  function warm(fen: string): void {
+    void analyse(fen, SEARCH).catch(() => undefined);
+  }
+
+  /**
+   * Score a move that the engine did not list.
+   *
+   * Searched on the same budget as its parent, so the two numbers are
+   * comparable; a cheaper look here is how false accusations get made.
+   */
+  async function scoreUnlisted(fen: string, uci: string): Promise<ReturnType<typeof scoreOfMove>> {
+    const child = fenAfter(fen, uci);
+    return scoreOfMove(await analyse(child, SEARCH), child);
+  }
+
+  /** Abandon whatever the engine is doing; the caller is about to change the world. */
+  function interrupt(): void {
+    engine.abort();
+    thinking = false;
+  }
+
+  // --------------------------------------------------------------- rendering
 
   function render(): void {
     if (mode.kind === 'analysis') renderAnalysis(mode);
     else renderGame();
-    renderMoves();
+    moves.render();
     renderButtons();
   }
 
   function renderGame(): void {
-    const fen = history.fen;
-    const last = history.lastMove;
-    const movable = canMove();
+    const fen = tree.fen;
+    const last = tree.lastMove;
     board.set({
       fen,
       turnColor: turnOf(fen),
       // Highlight whichever side just moved, not only yours.
       ...(last ? { lastMove: [square(last.uci, 0), square(last.uci, 2)] } : { lastMove: [] }),
-      movable: { color: you, dests: movable ? legalDests(fen) : noDests() },
+      movable: { color: you, dests: canMove() ? legalDests(fen) : noDests() },
       // Shapes must go in the same call as the fen: chessground clears them
       // whenever a position is set.
-      drawable: { shapes: mode.kind === 'rejected' ? rejectedShapes(mode.uci) : [] },
+      drawable: { shapes: mode.kind === 'rejected' ? rejectedShapes(mode.attempts) : [] },
     });
   }
 
-  /** Your move in red, so it is unmistakably the thing being complained about. */
-  function rejectedShapes(uci: string): DrawShape[] {
-    return [arrow(uci, 'red'), { orig: square(uci, 2), brush: 'red' }];
+  /**
+   * Every rejected move in red, each labelled with what it cost.
+   *
+   * All of them, not just the last: two wrong tries are two different
+   * misunderstandings, and seeing them together is the point.
+   */
+  function rejectedShapes(attempts: readonly Attempt[]): DrawShape[] {
+    return attempts.flatMap(attempt => [
+      arrow(attempt.uci, 'red', costLabel(attempt.verdict)),
+      { orig: square(attempt.uci, 2), brush: 'red' },
+    ]);
   }
 
   function renderAnalysis(view: Extract<Mode, { kind: 'analysis' }>): void {
@@ -178,9 +288,24 @@ async function main(): Promise<void> {
     const previous = view.step > 0 ? view.line[view.step - 1] : undefined;
 
     const shapes: DrawShape[] = [];
-    // At the start, show the mistake and the answer side by side.
-    if (view.step === 0) shapes.push(...rejectedShapes(view.yourMove));
-    if (next) shapes.push(arrow(next, view.step === 0 ? 'green' : 'blue'));
+    if (view.step === 0) {
+      // At the start, the mistakes and the answers side by side.
+      shapes.push(...rejectedShapes(view.attempts));
+      const best = cache.get(view.base, SEARCH.nodes, SEARCH.multiPV) ?? [];
+      const top = best[0];
+      for (const [rank, line] of best.slice(0, REVEAL_ARROWS).entries()) {
+        const loss = top ? Math.max(0, top.cp - line.cp) : 0;
+        shapes.push(
+          arrow(
+            line.moves[0],
+            rank === 0 ? 'green' : 'blue',
+            rank === 0 ? 'best' : `−${(loss / 100).toFixed(1)}`,
+          ),
+        );
+      }
+    } else if (next) {
+      shapes.push(arrow(next, 'blue'));
+    }
 
     board.set({
       fen,
@@ -189,28 +314,6 @@ async function main(): Promise<void> {
       movable: { color: you, dests: noDests() },
       drawable: { shapes },
     });
-  }
-
-  function renderMoves(): void {
-    movesEl.replaceChildren();
-    history.plies.forEach((ply, index) => {
-      if (ply.by === 'white') {
-        const number = document.createElement('li');
-        number.className = 'number';
-        number.textContent = `${Math.floor(index / 2) + 1}.`;
-        movesEl.append(number);
-      }
-      const item = document.createElement('li');
-      item.textContent = ply.san;
-      if (index + 1 === history.cursor && mode.kind !== 'analysis') item.classList.add('current');
-      // Only mark an error you have actually been shown.
-      if (ply.deliberateError && revealed.has(index)) item.classList.add('error');
-      item.onclick = () => {
-        goTo(index + 1);
-      };
-      movesEl.append(item);
-    });
-    movesEl.scrollTop = movesEl.scrollHeight;
   }
 
   function renderButtons(): void {
@@ -222,18 +325,289 @@ async function main(): Promise<void> {
       buttons.forward.toggleAttribute('disabled', mode.step >= mode.line.length);
       buttons.last.toggleAttribute('disabled', mode.step >= mode.line.length);
     } else {
-      buttons.first.toggleAttribute('disabled', history.atStart);
-      buttons.back.toggleAttribute('disabled', history.atStart);
-      buttons.forward.toggleAttribute('disabled', history.atLive);
-      buttons.last.toggleAttribute('disabled', history.atLive);
+      buttons.first.toggleAttribute('disabled', tree.atStart);
+      buttons.back.toggleAttribute('disabled', tree.atStart);
+      buttons.forward.toggleAttribute('disabled', tree.atLeaf);
+      buttons.last.toggleAttribute('disabled', tree.atLeaf);
     }
+
+    const stopped = mode.kind === 'rejected' || analysing;
     buttons.reveal.hidden = mode.kind !== 'rejected';
-    buttons.review.toggleAttribute('disabled', thinking || history.length === 0);
-    buttons.newGame.toggleAttribute('disabled', thinking);
+    buttons.punish.hidden = !stopped;
+    buttons.ignore.hidden = !stopped;
     buttons.resume.hidden = !analysing;
-    // Offer to continue from an earlier position only when there is something
-    // to discard and you are not in the middle of being corrected.
-    buttons.fork.hidden = analysing || history.atLive || thinking;
+    // Continuing from an earlier position only makes sense when there is a
+    // continuation to leave behind.
+    buttons.fork.hidden = stopped || tree.atLeaf || thinking;
+    buttons.review.toggleAttribute('disabled', tree.root.children.length === 0);
+  }
+
+  function updateScore(): void {
+    scoreEl.textContent = `spotted ${spotted} · missed ${missed}`;
+    const yours = stats.summary('you');
+    const theirs = stats.summary('bot');
+    acplEl.textContent = yours.moves === 0 ? '' : `you ${yours.acpl} cp · bot ${theirs.acpl} cp`;
+  }
+
+  // -------------------------------------------------------------- navigation
+
+  function canMove(): boolean {
+    return !thinking && mode.kind === 'play' && tree.turn === you && !outcomeOf(tree.fen);
+  }
+
+  function liveStatus(): string {
+    const over = outcomeOf(tree.fen);
+    if (over)
+      return over.winner ? `${over.reason} — ${over.winner} wins.` : `Draw: ${over.reason}.`;
+    if (!tree.atLeaf) return 'Browsing. Play a move to branch from here.';
+    return tree.turn === you ? 'Your move.' : 'Thinking…';
+  }
+
+  /** Put a position on the board, leaving whatever the engine was doing behind. */
+  function goTo(id: number): void {
+    interrupt();
+    tree.goTo(id);
+    // Asking to be punished applies to a branch, so leaving that branch ends it.
+    if (punishFrom !== undefined && !tree.isWithin(tree.current.id, punishFrom)) {
+      punishFrom = undefined;
+    }
+    mode = { kind: 'play' };
+    afterNavigation();
+  }
+
+  function afterNavigation(): void {
+    status(liveStatus());
+    if (tree.turn === you && !outcomeOf(tree.fen)) warm(tree.fen);
+    render();
+    reviewView?.setSelected(tree.current.id);
+  }
+
+  function step(delta: number): void {
+    if (mode.kind === 'analysis') {
+      mode = { ...mode, step: Math.max(0, Math.min(mode.step + delta, mode.line.length)) };
+      render();
+      return;
+    }
+    interrupt();
+    if (delta < 0) tree.back();
+    else tree.forward();
+    goTo(tree.current.id);
+  }
+
+  // ------------------------------------------------------------------- game
+
+  async function startGame(): Promise<void> {
+    interrupt();
+    thinking = true;
+    you = settings.playAs;
+
+    tree = new GameTree();
+    cache.clear();
+    stats.reset();
+    revealed.clear();
+    punishFrom = undefined;
+    blundersLeft = settings.blundersPerGame;
+    spotted = 0;
+    missed = 0;
+    mode = { kind: 'play' };
+    reviewEl.hidden = true;
+    reviewEl.replaceChildren();
+    reviewView = undefined;
+    moves = mountMoves(element('moves'), tree, { onSelect: goTo, revealed });
+    panel.update(settings);
+    updateScore();
+
+    await engine.newGame();
+    board.set({ orientation: you });
+    await handOver();
+  }
+
+  /** Whoever is to move gets the move: you get the board, the bot gets to think. */
+  async function handOver(): Promise<void> {
+    if (tree.turn === you || outcomeOf(tree.fen)) {
+      thinking = false;
+      if (!outcomeOf(tree.fen)) warm(tree.fen);
+      status(liveStatus());
+      render();
+      return;
+    }
+    render();
+    await botTurn();
+  }
+
+  async function onUserMove(orig: Key, dest: Key): Promise<void> {
+    if (!canMove()) return;
+    const uci = withPromotion(orig, dest);
+    const fen = tree.fen;
+    thinking = true;
+    lockBoard();
+
+    try {
+      const lines = await analyse(fen, SEARCH);
+      const thresholds = thresholdsFor(settings, tree.punishArmed);
+      // A move the engine did not list has to be looked up, or a mate you missed
+      // can be mistaken for one you found.
+      const listed = lines.some(line => line.moves[0] === uci);
+      const played = listed ? undefined : await scoreUnlisted(fen, uci);
+      let verdict = judge(lines, uci, played);
+
+      if (verdict && isError(verdict, thresholds) && needsVerification(verdict, thresholds)) {
+        // Only a marginal call is worth the pause; anything clear-cut or forced
+        // is acted on immediately.
+        status('Let me look again…');
+        const deep = await analyse(fen, VERIFY);
+        const deepPlayed = deep.some(line => line.moves[0] === uci)
+          ? undefined
+          : await scoreUnlisted(fen, uci);
+        verdict = judge(deep, uci, deepPlayed) ?? verdict;
+      }
+
+      // Every attempt counts towards your accuracy, including this one if it is
+      // about to be sent back.
+      if (verdict) stats.add('you', verdict.cpLoss, verdict.winLoss);
+
+      if (verdict && isError(verdict, thresholds)) {
+        thinking = false;
+        stopYou(uci, verdict);
+        updateScore();
+        return;
+      }
+
+      if (tree.punishArmed) {
+        spotted++;
+        status('Good — you saw it.');
+      }
+      accept(uci);
+    } catch (error) {
+      if (!isCancelled(error)) throw error;
+    }
+  }
+
+  /** Play your move and hand over to the bot. */
+  function accept(uci: string, playedAnyway = false): void {
+    tree.play(uci);
+    if (playedAnyway) tree.markPlayedAnyway();
+    mode = { kind: 'play' };
+    updateScore();
+    void botTurn();
+  }
+
+  /** The interruption: the move comes back, drawn in red, with nothing explained. */
+  function stopYou(uci: string, verdict: Verdict): void {
+    const previous = mode.kind === 'rejected' ? mode.attempts : [];
+    // Keep every attempt: two wrong tries are two different misunderstandings.
+    const attempts = [...previous.filter(attempt => attempt.uci !== uci), { uci, verdict }];
+    mode = { kind: 'rejected', attempts };
+
+    const forced = verdict.missesMate || verdict.hangsMate;
+    status(
+      attempts.length === 1
+        ? forced
+          ? 'Wait — look again. There is something forced here.'
+          : tree.punishArmed
+            ? 'Wait. I just gave you something, and that move lets it go. Look again.'
+            : 'Wait. Are you sure about that move? Have another look.'
+        : `Still not it — ${attempts.length} tries now. Look again, or ask to be shown.`,
+      true,
+    );
+    render();
+  }
+
+  /** Show what the move cost, the best answers, and the line that follows. */
+  function reveal(): void {
+    if (mode.kind !== 'rejected') return;
+    const attempts = mode.attempts;
+    const worst = attempts.reduce((a, b) => (b.verdict.cpLoss > a.verdict.cpLoss ? b : a));
+    if (tree.punishArmed) {
+      missed++;
+      if (tree.current.move) revealed.add(tree.current.id);
+      updateScore();
+    }
+
+    const line = worst.verdict.best.moves.slice(0, REVEAL_DEPTH);
+    const sans = sanLine(tree.fen, line);
+    status(`${describeCost(worst.verdict)} Best was ${sans[0] ?? '?'} — ${sans.join(' ')}`);
+    mode = { kind: 'analysis', base: tree.fen, attempts, line, step: 0 };
+    render();
+  }
+
+  /**
+   * Play the move you were stopped for anyway.
+   *
+   * `punish` makes the bot answer with best moves from here on, so you get to
+   * watch the refutation actually land instead of being told about it.
+   */
+  function playAnyway(punish: boolean): void {
+    const attempts = mode.kind === 'rejected' || mode.kind === 'analysis' ? mode.attempts : [];
+    const chosen = attempts.at(-1);
+    if (!chosen) return;
+    const node = tree.play(chosen.uci);
+    tree.markPlayedAnyway();
+    punishFrom = punish ? node.id : undefined;
+    mode = { kind: 'play' };
+    status(punish ? 'Right — watch how that gets punished.' : 'Playing it anyway.');
+    void botTurn();
+  }
+
+  async function botTurn(): Promise<void> {
+    thinking = true;
+    mode = { kind: 'play' };
+    status(outcomeOf(tree.fen) ? liveStatus() : 'Thinking…');
+    render();
+
+    if (outcomeOf(tree.fen)) {
+      thinking = false;
+      render();
+      return;
+    }
+
+    try {
+      const fen = tree.fen;
+      const lines = await analyse(fen, SEARCH);
+      const punishing = punishFrom !== undefined && tree.isWithin(tree.current.id, punishFrom);
+      const move = await chooseMove(
+        {
+          search: position => analyse(position, SEARCH),
+          searchWide: position => analyse(position, WIDE),
+          settings,
+        } satisfies Policy,
+        fen,
+        lines,
+        // While punishing, the bot plays the best move and nothing else.
+        punishing
+          ? { wantsError: false, acpl: Number.POSITIVE_INFINITY }
+          : { wantsError: wantsError(), acpl: stats.acpl('bot') },
+      );
+      if (!move) {
+        thinking = false;
+        status('The engine sees no move here.');
+        render();
+        return;
+      }
+      if (move.deliberateError) blundersLeft--;
+
+      const best = lines[0];
+      stats.add(
+        'bot',
+        move.cpLoss,
+        best ? Math.max(0, winPercent(best.cp) - winPercent(best.cp - move.cpLoss)) : 0,
+      );
+      // Say nothing about it. Spotting it is the whole point.
+      tree.play(move.uci, { deliberateError: move.deliberateError });
+      thinking = false;
+      updateScore();
+      if (!outcomeOf(tree.fen)) warm(tree.fen);
+      status(liveStatus());
+      render();
+      reviewView?.setSelected(tree.current.id);
+    } catch (error) {
+      if (!isCancelled(error)) throw error;
+    }
+  }
+
+  function wantsError(): boolean {
+    if (blundersLeft <= 0 || tree.current.ply < settings.blunderFromPly) return false;
+    return Math.random() < settings.blunderChance;
   }
 
   /** Stop accepting moves without touching the position already on the board. */
@@ -242,58 +616,160 @@ async function main(): Promise<void> {
     renderButtons();
   }
 
-  function updateScore(): void {
-    scoreEl.textContent = `spotted ${spotted} · missed ${missed}`;
-    const yours = stats.summary(you);
-    const theirs = stats.summary(bot);
-    acplEl.textContent = yours.moves === 0 ? '' : `you ${yours.acpl} cp · bot ${theirs.acpl} cp`;
+  function withPromotion(orig: Key, dest: Key): string {
+    // Auto-queen for now; a promotion picker is a later refinement.
+    const piece = board.state.pieces.get(dest);
+    const lastRank = dest.endsWith('8') || dest.endsWith('1');
+    return orig + dest + (piece?.role === 'pawn' && lastRank ? 'q' : '');
   }
 
-  // ---------------------------------------------------------------- navigation
+  // ----------------------------------------------------------------- review
 
-  function canMove(): boolean {
-    return !thinking && mode.kind !== 'analysis' && history.turn === you && !outcomeOf(history.fen);
-  }
+  let reviewView: ReturnType<typeof renderReview> | undefined;
 
-  function goTo(index: number): void {
-    if (mode.kind === 'analysis') return;
-    // Leaving the position drops the correction; the red arrow belongs to it.
-    mode = { kind: 'play' };
-    retries = 0;
-    history.goTo(index);
-    status(
-      history.atLive ? liveStatus() : `Browsing — move ${history.cursor} of ${history.length}.`,
-    );
-    render();
-  }
+  async function runReview(): Promise<void> {
+    if (tree.root.children.length === 0) return;
+    interrupt();
+    thinking = true;
+    renderButtons();
+    reviewEl.hidden = false;
+    reviewEl.textContent = 'Reviewing…';
 
-  function liveStatus(): string {
-    const over = outcomeOf(history.fen);
-    if (over)
-      return over.winner ? `${over.reason} — ${over.winner} wins.` : `Draw: ${over.reason}.`;
-    return history.turn === you ? 'Your move.' : 'Thinking…';
-  }
-
-  function step(delta: number): void {
-    if (mode.kind === 'analysis') {
-      const next = Math.max(0, Math.min(mode.step + delta, mode.line.length));
-      mode = { ...mode, step: next };
-      render();
-      return;
+    // The line being looked at, carried on to the end of its branch.
+    const line = [...tree.path];
+    for (let node = line.at(-1); node?.children[0]; node = node.children[0]) {
+      line.push(node.children[0]);
     }
-    goTo(history.cursor + delta);
+
+    try {
+      const review = await reviewGame(
+        tree.root.fen,
+        line,
+        fen => analyse(fen, REVIEW),
+        progress => {
+          // Most positions were analysed while playing, so this usually flies by.
+          reviewEl.textContent = `Reviewing… ${progress.done}/${progress.total}`;
+        },
+      );
+      reviewView = renderReview(reviewEl, review, {
+        you,
+        rootId: tree.root.id,
+        attempts: { you: stats.summary('you'), bot: stats.summary('bot') },
+        onSelect: id => {
+          goTo(id);
+          element('board').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        },
+      });
+      reviewView.setSelected(tree.current.id);
+    } catch (error) {
+      if (isCancelled(error)) {
+        reviewEl.hidden = true;
+        return;
+      }
+      reviewEl.textContent = `Review failed: ${error instanceof Error ? error.message : String(error)}`;
+    } finally {
+      thinking = false;
+      render();
+    }
+  }
+
+  // -------------------------------------------------------------------- pgn
+
+  function exportPgn(): void {
+    const result = outcomeOf(tree.fen);
+    pgnText.value = toPgn(tree, {
+      white: you === 'white' ? 'You' : 'Punichess',
+      black: you === 'black' ? 'You' : 'Punichess',
+      date: pgnDate(),
+      result:
+        result?.winner === 'white'
+          ? '1-0'
+          : result?.winner === 'black'
+            ? '0-1'
+            : result
+              ? '1/2-1/2'
+              : '*',
+    });
+    pgnNote(`Exported ${tree.nodes.length - 1} moves.`);
+  }
+
+  function importPgn(text: string): void {
+    interrupt();
+    try {
+      const loaded = fromPgn(text);
+      tree = loaded;
+      // An imported game was not played here, so none of this session's
+      // bookkeeping applies to it.
+      cache.clear();
+      stats.reset();
+      revealed.clear();
+      punishFrom = undefined;
+      spotted = 0;
+      missed = 0;
+      mode = { kind: 'play' };
+      reviewEl.hidden = true;
+      reviewView = undefined;
+      moves = mountMoves(element('moves'), tree, { onSelect: goTo, revealed });
+      updateScore();
+      pgnNote(`Loaded ${tree.nodes.length - 1} moves. Play on from anywhere.`);
+      afterNavigation();
+    } catch (error) {
+      pgnNote(
+        error instanceof PgnImportError ? error.message : 'That PGN could not be read.',
+        true,
+      );
+    }
+  }
+
+  function pgnNote(text: string, bad = false): void {
+    pgnStatusEl.textContent = text;
+    pgnStatusEl.classList.toggle('bad', bad);
+  }
+
+  // --------------------------------------------------------------- controls
+
+  /** Take over the other side, keeping the position exactly as it stands. */
+  async function swapSides(): Promise<void> {
+    interrupt();
+    settings = withColour(settings, other(you));
+    saveSettings(settings);
+    you = settings.playAs;
+    panel.update(settings);
+    mode = { kind: 'play' };
+    board.set({ orientation: you });
+    status(`You are ${you} now.`);
+    await handOver();
+  }
+
+  /** Abandon the continuation and carry on from the position in view. */
+  async function forkHere(): Promise<void> {
+    interrupt();
+    tree.promote();
+    mode = { kind: 'play' };
+    status('Playing on from here.');
+    await handOver();
   }
 
   function wireControls(): void {
     buttons.first.onclick = () => {
-      if (mode.kind === 'analysis') mode = { ...mode, step: 0 };
-      else history.first();
-      goToRendered();
+      if (mode.kind === 'analysis') {
+        mode = { ...mode, step: 0 };
+        render();
+        return;
+      }
+      interrupt();
+      tree.first();
+      goTo(tree.current.id);
     };
     buttons.last.onclick = () => {
-      if (mode.kind === 'analysis') mode = { ...mode, step: mode.line.length };
-      else history.last();
-      goToRendered();
+      if (mode.kind === 'analysis') {
+        mode = { ...mode, step: mode.line.length };
+        render();
+        return;
+      }
+      interrupt();
+      tree.last();
+      goTo(tree.current.id);
     };
     buttons.back.onclick = () => {
       step(-1);
@@ -301,8 +777,12 @@ async function main(): Promise<void> {
     buttons.forward.onclick = () => {
       step(1);
     };
-    buttons.reveal.onclick = () => {
-      if (mode.kind === 'rejected') reveal(mode.uci, mode.verdict);
+    buttons.reveal.onclick = reveal;
+    buttons.punish.onclick = () => {
+      playAnyway(true);
+    };
+    buttons.ignore.onclick = () => {
+      playAnyway(false);
     };
     buttons.resume.onclick = () => {
       mode = { kind: 'play' };
@@ -312,24 +792,50 @@ async function main(): Promise<void> {
     buttons.fork.onclick = () => {
       void forkHere();
     };
+    buttons.swap.onclick = () => {
+      void swapSides();
+    };
     buttons.review.onclick = () => {
       void runReview();
     };
     buttons.newGame.onclick = () => {
-      void newGame();
-    };
-    colourPicker.onchange = () => {
-      if (thinking) {
-        colourPicker.value = you;
-        return;
-      }
-      settings = withColour(settings, colourPicker.value === 'black' ? 'black' : 'white');
-      saveSettings(settings);
       void startGame();
+    };
+    buttons.pgnExport.onclick = exportPgn;
+    buttons.pgnImport.onclick = () => {
+      importPgn(pgnText.value);
+    };
+    buttons.pgnCopy.onclick = () => {
+      pgnText.select();
+      navigator.clipboard
+        .writeText(pgnText.value)
+        .then(() => {
+          pgnNote('Copied.');
+        })
+        .catch(() => {
+          pgnNote('Could not copy; the text is selected, so copy it by hand.', true);
+        });
+    };
+    pgnFile.onchange = () => {
+      const file = pgnFile.files?.[0];
+      if (!file) return;
+      file
+        .text()
+        .then(text => {
+          pgnText.value = text;
+          importPgn(text);
+        })
+        .catch(() => {
+          pgnNote('That file could not be read.', true);
+        });
     };
 
     document.addEventListener('keydown', event => {
-      const keys: Record<string, () => void> = {
+      // Let the PGN box have its own keyboard.
+      if (event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLInputElement) {
+        return;
+      }
+      const actions: Record<string, () => void> = {
         ArrowLeft: () => {
           step(-1);
         },
@@ -343,261 +849,13 @@ async function main(): Promise<void> {
           buttons.last.click();
         },
       };
-      const action = keys[event.key];
+      const action = actions[event.key];
       if (action) {
         event.preventDefault();
         action();
       }
     });
   }
-
-  /** Apply a navigation that has already been made to the model. */
-  function goToRendered(): void {
-    if (mode.kind !== 'analysis') {
-      mode = { kind: 'play' };
-      retries = 0;
-      status(
-        history.atLive ? liveStatus() : `Browsing — move ${history.cursor} of ${history.length}.`,
-      );
-    }
-    render();
-  }
-
-  /** Abandon everything after the position you are looking at and play on. */
-  async function forkHere(): Promise<void> {
-    history.truncate();
-    mode = { kind: 'play' };
-    retries = 0;
-    status('Playing on from here.');
-    render();
-    if (history.turn === you) {
-      pending = engine.analyse(history.fen, SEARCH);
-      status('Your move.');
-      render();
-      return;
-    }
-    await botTurn();
-  }
-
-  /**
-   * Analyse the whole game and show it.
-   *
-   * A second or so per position, so it reports progress and hands control back
-   * between searches rather than freezing the board.
-   */
-  async function runReview(): Promise<void> {
-    if (thinking || history.length === 0) return;
-    thinking = true;
-    renderButtons();
-    reviewEl.hidden = false;
-    reviewEl.textContent = 'Reviewing…';
-
-    try {
-      const review = await reviewGame(
-        INITIAL_FEN,
-        history.plies,
-        fen => engine.analyse(fen, REVIEW),
-        progress => {
-          reviewEl.textContent = `Reviewing… ${progress.done}/${progress.total}`;
-        },
-      );
-      renderReview(reviewEl, review, you, ply => {
-        goTo(ply);
-        document.getElementById('board')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
-    } finally {
-      thinking = false;
-      render();
-    }
-  }
-
-  async function newGame(): Promise<void> {
-    if (thinking) return;
-    await startGame();
-  }
-
-  /**
-   * Begin a game with the current settings.
-   *
-   * Playing Black means the bot opens, so this hands straight over rather than
-   * waiting for a move that cannot come.
-   */
-  async function startGame(): Promise<void> {
-    thinking = true;
-    you = settings.playAs;
-    bot = other(you);
-
-    history.first();
-    history.truncate();
-    stats.reset();
-    revealed.clear();
-    blundersLeft = settings.blundersPerGame;
-    spotted = 0;
-    missed = 0;
-    retries = 0;
-    mode = { kind: 'play' };
-    reviewEl.hidden = true;
-    reviewEl.replaceChildren();
-    colourPicker.value = you;
-    panel.update(settings);
-    updateScore();
-
-    await engine.newGame();
-    board.set({ orientation: you });
-
-    if (history.turn === you) {
-      thinking = false;
-      pending = engine.analyse(history.fen, SEARCH);
-      status('Your move.');
-      render();
-      return;
-    }
-    render();
-    await botTurn();
-  }
-
-  // ----------------------------------------------------------------- the game
-
-  async function onUserMove(orig: Key, dest: Key): Promise<void> {
-    if (!canMove()) return;
-    const uci = withPromotion(orig, dest);
-    thinking = true;
-    lockBoard();
-
-    // Forking: playing from an earlier position discards the continuation, so
-    // the analysis started for the live position no longer applies.
-    const lines = history.atLive ? await pending : await engine.analyse(history.fen, SEARCH);
-    const thresholds = thresholdsFor(settings, history.punishArmed);
-    const quick = judge(lines, uci);
-
-    if (quick && isError(quick, thresholds)) {
-      // Never accuse on a shallow search. A false alarm is the worst failure
-      // this app has, so confirm it deeper before interrupting.
-      status('Hmm — let me look again…');
-      const deep = judge(await engine.analyse(history.fen, VERIFY), uci);
-      if (deep && isError(deep, thresholds)) {
-        thinking = false;
-        stopYou(uci, deep);
-        return;
-      }
-    }
-
-    if (history.punishArmed) {
-      spotted++;
-    }
-    // Forking rewrites the tail of the game, so the accuracy record follows it.
-    forget(history.cursor);
-    stats.add(history.turn, quick?.cpLoss ?? 0, quick?.winLoss ?? 0);
-    history.play(uci);
-    retries = 0;
-    updateScore();
-    await botTurn();
-  }
-
-  /** The interruption: first a nudge carrying nothing, then the reveal. */
-  function stopYou(uci: string, verdict: Verdict): void {
-    retries++;
-    mode = { kind: 'rejected', uci, verdict };
-    status(
-      retries === 1
-        ? verdict.missesMate || verdict.hangsMate
-          ? 'Wait — look again. There is something forced here.'
-          : history.punishArmed
-            ? 'Wait. I just gave you something, and that move lets it go. Look again.'
-            : 'Wait. Are you sure about that move? Have another look.'
-        : 'Still not it. Take the hint, or ask to be shown.',
-      true,
-    );
-    render();
-  }
-
-  /** Show what the move cost and let the best line be played out on the board. */
-  function reveal(uci: string, verdict: Verdict): void {
-    if (history.punishArmed) {
-      missed++;
-      updateScore();
-      revealed.add(history.cursor - 1);
-    }
-    const line = verdict.best.moves.slice(0, REVEAL_DEPTH);
-    const sans = sanLine(history.fen, line);
-    status(`${describeCost(verdict)} Best was ${sans[0] ?? '?'} — ${sans.join(' ')}`);
-    mode = { kind: 'analysis', base: history.fen, yourMove: uci, line, step: 0 };
-    render();
-  }
-
-  async function botTurn(): Promise<void> {
-    thinking = true;
-    mode = { kind: 'play' };
-    status('Thinking…');
-    render();
-
-    if (outcomeOf(history.fen)) {
-      thinking = false;
-      status(liveStatus());
-      render();
-      return;
-    }
-
-    const lines = await engine.analyse(history.fen, SEARCH);
-    const botColour = history.turn;
-    const move = await chooseMove(policy(), history.fen, lines, {
-      wantsError: wantsError(),
-      acpl: stats.acpl(botColour),
-    });
-    if (!move) {
-      thinking = false;
-      status('The engine sees no move here.');
-      render();
-      return;
-    }
-    if (move.deliberateError) blundersLeft--;
-
-    const best = lines[0];
-    forget(history.cursor);
-    stats.add(
-      botColour,
-      move.cpLoss,
-      best ? Math.max(0, winPercent(best.cp) - winPercent(best.cp - move.cpLoss)) : 0,
-    );
-    // Say nothing about it. Spotting it is the whole point.
-    history.play(move.uci, { deliberateError: move.deliberateError });
-    thinking = false;
-    pending = engine.analyse(history.fen, SEARCH);
-    status(liveStatus());
-    render();
-  }
-
-  function wantsError(): boolean {
-    if (blundersLeft <= 0 || history.length < settings.blunderFromPly) return false;
-    return Math.random() < settings.blunderChance;
-  }
-
-  /** Drop accuracy and reveal records for moves that no longer exist. */
-  function forget(from: number): void {
-    stats.truncate(from);
-    for (const index of [...revealed]) if (index >= from) revealed.delete(index);
-  }
-
-  function withPromotion(orig: Key, dest: Key): string {
-    // Auto-queen for now; a promotion picker is a later refinement.
-    const piece = board.state.pieces.get(dest);
-    const lastRank = dest.endsWith('8') || dest.endsWith('1');
-    return orig + dest + (piece?.role === 'pawn' && lastRank ? 'q' : '');
-  }
-}
-
-/** Say what the move cost, in the terms that actually fit the position. */
-function describeCost(verdict: Verdict): string {
-  if (verdict.missesMate) {
-    return verdict.mateIn === undefined
-      ? 'That lets a forced mate slip.'
-      : `That misses mate in ${verdict.mateIn}.`;
-  }
-  if (verdict.hangsMate) return 'That walks into a forced mate.';
-  return (
-    `That costs ${(verdict.cpLoss / 100).toFixed(1)} pawns, ` +
-    `about ${verdict.winLoss.toFixed(0)}% of your winning chances.`
-  );
 }
 
 main().catch((error: unknown) => {

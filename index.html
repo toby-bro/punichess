@@ -20,11 +20,20 @@
         <button id="last" type="button" title="Latest (End)" aria-label="Go to latest">⏭</button>
         <span class="spacer"></span>
         <button id="reveal" type="button" hidden>Show me</button>
+        <button
+          id="punish"
+          type="button"
+          hidden
+          title="Play it, and let the bot punish it properly"
+        >
+          Punish me
+        </button>
+        <button id="ignore" type="button" hidden title="Play it anyway and carry on">Ignore</button>
         <button id="resume" type="button" hidden>Back to game</button>
         <button id="fork" type="button" hidden>Play from here</button>
       </div>
 
-      <ol id="moves" aria-label="Moves played"></ol>
+      <div id="moves" class="moves" aria-label="Moves played"></div>
 
       <div class="bar">
         <span id="score">spotted 0 · missed 0</span>
@@ -32,14 +41,9 @@
       </div>
 
       <div class="controls">
-        <label class="colour">
-          Play as
-          <select id="colour">
-            <option value="white">White</option>
-            <option value="black">Black</option>
-          </select>
-        </label>
-        <span class="spacer"></span>
+        <button id="swap" type="button" title="Take over the other side, keeping this position">
+          Swap sides
+        </button>
         <button id="review-run" type="button">Review game</button>
         <button id="new-game" type="button">New game</button>
       </div>
@@ -47,6 +51,26 @@
       <details id="settings-box">
         <summary>Bot settings</summary>
         <div id="settings"></div>
+      </details>
+
+      <details id="pgn-box">
+        <summary>PGN</summary>
+        <div class="controls">
+          <button id="pgn-export" type="button">Export</button>
+          <button id="pgn-import" type="button">Import</button>
+          <button id="pgn-copy" type="button">Copy</button>
+          <label class="file-button">
+            Open file
+            <input id="pgn-file" type="file" accept=".pgn,text/plain" />
+          </label>
+        </div>
+        <textarea
+          id="pgn-text"
+          rows="6"
+          spellcheck="false"
+          placeholder="Export writes the game here. Paste a PGN and press Import to replay it."
+        ></textarea>
+        <p id="pgn-status" class="pgn-status"></p>
       </details>
 
       <section id="review" hidden aria-label="Game review"></section>
