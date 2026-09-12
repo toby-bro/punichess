@@ -1,24 +1,31 @@
 /**
  * Bot move policy.
  *
- * Honest play means "any move that does not actually cost anything", picked at
- * random so the bot is not a repeatable top-move machine. Errors are made on
- * purpose, and only when they are *punishable* -- see `pickBlunder`.
+ * Honest play aims at a chosen average centipawn loss rather than at the best
+ * move, so the bot drifts the way a human does instead of playing perfectly
+ * until it suddenly does not. Errors are made on purpose, and only when they
+ * are punishable -- see `pickBlunder` and `pickMateTrap`.
  */
 
 import { fenAfter } from './chess.ts';
 import { DECIDED_CP } from './referee.ts';
+import type { Settings } from './settings.ts';
 import type { PvLine } from './uci.ts';
 
-/** Widest centipawn loss the bot accepts while playing honestly. */
-export const QUIET_BAND = 100;
-/** A deliberate error must cost at least this much... */
-export const BLUNDER_MIN = 100;
-/** ...and at most this much, so the game stays a game. */
-export const BLUNDER_MAX = 300;
 /**
- * ...and the refutation must beat the second-best reply by this margin, or
- * there is nothing for you to spot and stopping you would be unfair.
+ * Narrowest spread of candidate losses, in centipawns.
+ *
+ * The spread widens with the target so a sloppy bot stays varied, but at a low
+ * target it has to clamp down hard: anything looser and the weaker moves keep
+ * enough weight to hold the average well above zero however the controller
+ * pushes, since it cannot ask for a negative loss.
+ */
+const MIN_SPREAD_CP = 8;
+const SPREAD_RATIO = 0.6;
+
+/**
+ * The refutation of a deliberate error must beat the second-best reply by this
+ * much, or there is nothing to spot and stopping the player would be unfair.
  */
 export const PUNISH_MARGIN = 80;
 
@@ -27,81 +34,190 @@ export type Search = (fen: string) => Promise<readonly PvLine[]>;
 
 export interface Policy {
   readonly search: Search;
+  /**
+   * A search over many more candidate moves, used only when hunting for a move
+   * that hands the player a forced mate. Such moves are the worst in the
+   * position, so a narrow search never surfaces them.
+   */
+  readonly searchWide?: Search | undefined;
+  readonly settings: Settings;
   /** Injectable for deterministic tests; defaults to Math.random. */
   readonly random?: (() => number) | undefined;
 }
 
-export interface BotMove {
-  readonly uci: string;
-  /** True when the bot chose to go wrong here, so the referee can arm the strict rule. */
-  readonly deliberateError: boolean;
+export interface MoveContext {
+  readonly wantsError: boolean;
+  /** The bot's average centipawn loss so far, which steers honest play. */
+  readonly acpl: number;
 }
 
+export type MoveKind = 'quiet' | 'blunder' | 'mate-trap';
+
+export interface BotMove {
+  readonly uci: string;
+  readonly kind: MoveKind;
+  /** True when the bot went wrong on purpose, arming the strict rule. */
+  readonly deliberateError: boolean;
+  /** What this move cost against the best move, in centipawns. */
+  readonly cpLoss: number;
+}
+
+const lossOf = (best: PvLine, line: PvLine): number => Math.max(0, best.cp - line.cp);
+
 /**
- * Choose the bot's move. Returns undefined only when there is nothing to play,
- * which callers should have detected as game over first.
+ * The loss to aim for on this move so the running average approaches the target.
+ *
+ * Overshoots when the average is below target and undershoots when above, which
+ * converges without needing to remember anything but the average.
  */
+export function desiredLoss(target: number, acpl: number, band: number): number {
+  return Math.max(0, Math.min(2 * target - acpl, band));
+}
+
+/** Choose the bot's move, or nothing when there is no move to make. */
 export async function chooseMove(
   policy: Policy,
   fen: string,
   lines: readonly PvLine[],
-  wantsError: boolean,
+  context: MoveContext,
 ): Promise<BotMove | undefined> {
-  if (lines.length === 0) return undefined;
+  const [best] = lines;
+  if (!best) return undefined;
+  const random = policy.random ?? Math.random;
 
-  if (wantsError) {
+  if (context.wantsError) {
+    // A mate to find is a better lesson than a dropped piece, so try for one
+    // first when the settings ask for it.
+    if (random() < policy.settings.mateTrapShare) {
+      const trap = await pickMateTrap(policy, fen, lines);
+      if (trap) {
+        return { uci: trap.uci, kind: 'mate-trap', deliberateError: true, cpLoss: trap.cpLoss };
+      }
+    }
     const blunder = await pickBlunder(policy, fen, lines);
-    if (blunder) return { uci: blunder, deliberateError: true };
+    if (blunder) {
+      return { uci: blunder.uci, kind: 'blunder', deliberateError: true, cpLoss: blunder.cpLoss };
+    }
   }
 
-  const quiet = pickQuiet(lines, policy.random ?? Math.random);
-  return quiet ? { uci: quiet, deliberateError: false } : undefined;
+  const quiet = pickHonest(lines, policy.settings, context.acpl, random);
+  if (!quiet) return undefined;
+  return { uci: quiet, kind: 'quiet', deliberateError: false, cpLoss: honestLoss(lines, quiet) };
 }
 
-/** Any move that costs at most QUIET_BAND, chosen uniformly at random. */
-export function pickQuiet(
+const honestLoss = (lines: readonly PvLine[], uci: string): number => {
+  const [best] = lines;
+  const played = lines.find(line => line.moves[0] === uci);
+  return best && played ? lossOf(best, played) : 0;
+};
+
+/**
+ * Pick an honest move, biased towards the loss that keeps the average on target.
+ *
+ * Candidates are weighted rather than filtered, so the bot still sometimes finds
+ * the best move and sometimes the sloppiest one in range.
+ */
+export function pickHonest(
   lines: readonly PvLine[],
+  settings: Settings,
+  acpl: number,
   random: () => number = Math.random,
 ): string | undefined {
   const [best] = lines;
   if (!best) return undefined;
 
-  const band = lines.filter(line => best.cp - line.cp <= QUIET_BAND);
-  const chosen = band[Math.min(band.length - 1, Math.floor(random() * band.length))];
-  return (chosen ?? best).moves[0];
+  const candidates = lines.filter(line => lossOf(best, line) <= settings.quietBand);
+  const target = desiredLoss(settings.targetAcpl, acpl, settings.quietBand);
+  const spread = Math.max(MIN_SPREAD_CP, target * SPREAD_RATIO);
+  const weights = candidates.map(line => Math.exp(-Math.abs(lossOf(best, line) - target) / spread));
+  return (weighted(candidates, weights, random) ?? best).moves[0];
+}
+
+/** Sample one item in proportion to its weight. */
+function weighted<T>(
+  items: readonly T[],
+  weights: readonly number[],
+  random: () => number,
+): T | undefined {
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  if (total <= 0) return items[0];
+  let ticket = random() * total;
+  for (const [index, item] of items.entries()) {
+    ticket -= weights[index] ?? 0;
+    if (ticket <= 0) return item;
+  }
+  return items.at(-1);
+}
+
+export interface Candidate {
+  readonly uci: string;
+  readonly cpLoss: number;
 }
 
 /**
  * Find an error worth making: costly enough to matter, cheap enough to recover
- * from, and above all one with a clear refutation for you to find.
+ * from, and above all one with a clear refutation for the player to find.
  */
 export async function pickBlunder(
   policy: Policy,
   fen: string,
   lines: readonly PvLine[],
-): Promise<string | undefined> {
+): Promise<Candidate | undefined> {
   const [best] = lines;
   if (!best) return undefined;
   // Erring on purpose in an already decided game teaches nothing.
   if (Math.abs(best.cp) > DECIDED_CP) return undefined;
 
   const random = policy.random ?? Math.random;
-  const candidates = lines
-    .filter(line => {
-      const loss = best.cp - line.cp;
-      return loss >= BLUNDER_MIN && loss <= BLUNDER_MAX;
-    })
-    .map(line => ({ line, order: random() }))
-    .sort((a, b) => a.order - b.order)
-    .map(entry => entry.line);
+  const { blunderMin, blunderMax } = policy.settings;
+  const candidates = shuffle(
+    lines.filter(line => {
+      const loss = lossOf(best, line);
+      return loss >= blunderMin && loss <= blunderMax;
+    }),
+    random,
+  );
 
   for (const candidate of candidates) {
-    const move = candidate.moves[0];
-    const replies = await policy.search(fenAfter(fen, move));
+    const uci = candidate.moves[0];
+    const replies = await policy.search(fenAfter(fen, uci));
     const [punish, second] = replies;
     // A punishable error is one where the right reply stands out. If every reply
     // is about as good there is no insight to have, so look for another error.
-    if (punish && second && punish.cp - second.cp >= PUNISH_MARGIN) return move;
+    if (punish && second && punish.cp - second.cp >= PUNISH_MARGIN) {
+      return { uci, cpLoss: lossOf(best, candidate) };
+    }
   }
   return undefined;
 }
+
+/**
+ * Find a move that hands the player a forced mate within the configured depth.
+ *
+ * These are the very worst moves in the position, so they never appear in the
+ * narrow search used for ordinary play; this needs the wide one.
+ */
+export async function pickMateTrap(
+  policy: Policy,
+  fen: string,
+  lines: readonly PvLine[],
+): Promise<Candidate | undefined> {
+  const [best] = lines;
+  if (!best) return undefined;
+  if (Math.abs(best.cp) > DECIDED_CP) return undefined;
+  // If the bot is getting mated whatever it does, allowing it is not an error.
+  if (best.mate !== undefined && best.mate < 0) return undefined;
+
+  const wide = await (policy.searchWide ?? policy.search)(fen);
+  const traps = wide.filter(
+    line => line.mate !== undefined && line.mate < 0 && -line.mate <= policy.settings.maxMateDepth,
+  );
+  const chosen = shuffle(traps, policy.random ?? Math.random)[0];
+  return chosen ? { uci: chosen.moves[0], cpLoss: lossOf(best, chosen) } : undefined;
+}
+
+const shuffle = <T>(items: readonly T[], random: () => number): T[] =>
+  items
+    .map(item => ({ item, order: random() }))
+    .sort((a, b) => a.order - b.order)
+    .map(entry => entry.item);
