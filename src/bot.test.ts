@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  MAX_PROBES,
   type Policy,
   type Search,
   chooseMove,
@@ -105,13 +106,17 @@ describe('pickHonest', () => {
 });
 
 describe('pickBlunder', () => {
-  const lines = search(['e2e4', 30], ['e2e3', -120], ['a2a3', -900]);
+  // A wide search: the errors worth making are never in the top few lines.
+  const wide = search(['e2e4', 30], ['g1f3', 20], ['e2e3', -120], ['a2a3', -900]);
+  const best = wide[0];
 
   it('picks an error inside the band when it is punishable', async () => {
+    assert.ok(best);
     const found = await pickBlunder(
-      policy({ search: replying(['d7d5', 200], ['b8c6', 20]) }),
+      policy({ probe: replying(['d7d5', 200], ['b8c6', 20]) }),
       INITIAL_FEN,
-      lines,
+      best,
+      wide,
     );
     assert.ok(found);
     assert.equal(found.uci, 'e2e3');
@@ -119,79 +124,88 @@ describe('pickBlunder', () => {
   });
 
   it('refuses an error whose refutation is not clear-cut', async () => {
+    assert.ok(best);
     const found = await pickBlunder(
-      policy({ search: replying(['d7d5', 200], ['b8c6', 130]) }),
+      policy({ probe: replying(['d7d5', 200], ['b8c6', 130]) }),
       INITIAL_FEN,
-      lines,
+      best,
+      wide,
     );
     assert.equal(found, undefined);
   });
 
   it('respects a widened band from the settings', async () => {
-    const wide = policy({
-      search: replying(['d7d5', 500], ['b8c6', 0]),
-      settings: settingsWith({ blunderMin: 500, blunderMax: 1000 }),
-    });
-    const found = await pickBlunder(wide, INITIAL_FEN, lines);
+    assert.ok(best);
+    const found = await pickBlunder(
+      policy({
+        probe: replying(['d7d5', 500], ['b8c6', 0]),
+        settings: settingsWith({ blunderMin: 500, blunderMax: 1000 }),
+      }),
+      INITIAL_FEN,
+      best,
+      wide,
+    );
     assert.equal(found?.uci, 'a2a3', 'only the 9.30 drop is in this band');
   });
 
-  it('does not throw the game when it is already decided', async () => {
-    const won = search(['e2e4', DECIDED_CP + 1], ['e2e3', DECIDED_CP - 150]);
-    const found = await pickBlunder(
-      policy({ search: replying(['d7d5', 500], ['b8c6', 0]) }),
+  it('gives up rather than searching every candidate', async () => {
+    assert.ok(best);
+    let probes = 0;
+    // Real moves: the candidates get played out to check the refutation.
+    const spare = ['a2a3', 'a2a4', 'b2b3', 'b2b4', 'c2c3', 'c2c4', 'd2d3', 'd2d4', 'f2f3', 'f2f4'];
+    const many = search(['g1f3', 0], ...spare.map((uci, i) => [uci, -150 - i] as [string, number]));
+    await pickBlunder(
+      policy({
+        probe: () => {
+          probes++;
+          // Never punishable, so every candidate gets tried.
+          return Promise.resolve(search(['a', 10], ['b', 10]));
+        },
+      }),
       INITIAL_FEN,
-      won,
+      many[0] ?? best,
+      many,
     );
-    assert.equal(found, undefined);
+    assert.equal(probes, MAX_PROBES, 'a bot that thinks for ten seconds is worse company');
   });
 });
 
 describe('pickMateTrap', () => {
   const level = search(['e2e4', 20], ['d2d4', 10]);
   // A wide search turns up the moves that hand over a forced mate.
-  const wide = (): Search => () =>
-    Promise.resolve([
-      ...search(['e2e4', 20], ['d2d4', 10]),
-      mateLine('g1h3', -3, 3),
-      mateLine('f2f3', -1, 4),
-      mateLine('h2h4', -6, 5),
-    ]);
+  const wide = [
+    ...level,
+    mateLine('g1h3', -3, 3),
+    mateLine('f2f3', -1, 4),
+    mateLine('h2h4', -6, 5),
+  ];
 
-  it('finds a move that allows mate within the configured depth', async () => {
-    const found = await pickMateTrap(
-      policy({ searchWide: wide(), settings: settingsWith({ maxMateDepth: 3 }) }),
-      INITIAL_FEN,
-      level,
-    );
+  it('finds a move that allows mate within the configured depth', () => {
+    const best = level[0];
+    assert.ok(best);
+    const found = pickMateTrap(wide, best, settingsWith({ maxMateDepth: 3 }));
     assert.ok(found);
     assert.ok(['g1h3', 'f2f3'].includes(found.uci), `unexpected trap ${found.uci}`);
   });
 
-  it('never offers a mate deeper than allowed', async () => {
+  it('never offers a mate deeper than allowed', () => {
+    const best = level[0];
+    assert.ok(best);
     for (let i = 0; i < 50; i++) {
-      const found = await pickMateTrap(
-        policy({ searchWide: wide(), settings: settingsWith({ maxMateDepth: 1 }) }),
-        INITIAL_FEN,
-        level,
-      );
+      const found = pickMateTrap(wide, best, settingsWith({ maxMateDepth: 1 }));
       assert.equal(found?.uci, 'f2f3', 'only mate in 1 is allowed here');
     }
   });
 
-  it('finds nothing when no move allows a short enough mate', async () => {
-    const found = await pickMateTrap(
-      policy({ searchWide: () => Promise.resolve(search(['e2e4', 20], ['d2d4', 10])) }),
-      INITIAL_FEN,
-      level,
-    );
-    assert.equal(found, undefined);
+  it('finds nothing when no move allows a short enough mate', () => {
+    const best = level[0];
+    assert.ok(best);
+    assert.equal(pickMateTrap(level, best, DEFAULT_SETTINGS), undefined);
   });
 
-  it('does not call it an error when the bot is getting mated anyway', async () => {
-    const lost = [mateLine('g1h1', -4, 1), mateLine('g1f1', -2, 2)];
-    const found = await pickMateTrap(policy({ searchWide: wide() }), INITIAL_FEN, lost);
-    assert.equal(found, undefined);
+  it('does not call it an error when the bot is getting mated anyway', () => {
+    const lost = mateLine('g1h1', -4, 1);
+    assert.equal(pickMateTrap(wide, lost, DEFAULT_SETTINGS), undefined);
   });
 });
 
@@ -208,7 +222,8 @@ describe('chooseMove', () => {
   it('marks a deliberate error so the referee can arm the strict rule', async () => {
     const move = await chooseMove(
       policy({
-        search: replying(['d7d5', 300], ['b8c6', 0]),
+        searchWide: () => Promise.resolve(search(['e2e4', 30], ['e2e3', -120])),
+        probe: replying(['d7d5', 300], ['b8c6', 0]),
         settings: settingsWith({ mateTrapShare: 0 }),
       }),
       INITIAL_FEN,
@@ -224,7 +239,7 @@ describe('chooseMove', () => {
   it('prefers a mate trap when the settings ask for one', async () => {
     const move = await chooseMove(
       policy({
-        search: replying(['d7d5', 300], ['b8c6', 0]),
+        probe: replying(['d7d5', 300], ['b8c6', 0]),
         searchWide: () => Promise.resolve([...lines, mateLine('g1h3', -2, 3)]),
         settings: settingsWith({ mateTrapShare: 1 }),
       }),
@@ -240,8 +255,8 @@ describe('chooseMove', () => {
   it('falls back to an ordinary error when no mate trap exists', async () => {
     const move = await chooseMove(
       policy({
-        search: replying(['d7d5', 300], ['b8c6', 0]),
-        searchWide: () => Promise.resolve(lines),
+        probe: replying(['d7d5', 300], ['b8c6', 0]),
+        searchWide: () => Promise.resolve(search(['e2e4', 30], ['e2e3', -120])),
         settings: settingsWith({ mateTrapShare: 1 }),
       }),
       INITIAL_FEN,
@@ -254,5 +269,23 @@ describe('chooseMove', () => {
   it('returns nothing when the engine offered no moves', async () => {
     const move = await chooseMove(policy(), INITIAL_FEN, [], { wantsError: false, acpl: 0 });
     assert.equal(move, undefined);
+  });
+
+  it('does not throw an already decided game, and does not pay to find out', async () => {
+    let wideSearches = 0;
+    const decided = search(['e2e4', DECIDED_CP + 200], ['e2e3', DECIDED_CP]);
+    const move = await chooseMove(
+      policy({
+        searchWide: () => {
+          wideSearches++;
+          return Promise.resolve(decided);
+        },
+      }),
+      INITIAL_FEN,
+      decided,
+      { wantsError: true, acpl: 0 },
+    );
+    assert.equal(move?.deliberateError, false);
+    assert.equal(wideSearches, 0, 'the wide search is the expensive one; skip it entirely');
   });
 });

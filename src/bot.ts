@@ -29,17 +29,34 @@ const SPREAD_RATIO = 0.6;
  */
 export const PUNISH_MARGIN = 80;
 
+/**
+ * How many candidate errors to test for punishability before giving up.
+ *
+ * Each test is a search, and a bot that thinks for ten seconds is worse company
+ * than one that occasionally fails to find an error worth making.
+ */
+export const MAX_PROBES = 3;
+
 /** Analyse a position. Injected so the policy can be tested without an engine. */
 export type Search = (fen: string) => Promise<readonly PvLine[]>;
 
 export interface Policy {
   readonly search: Search;
   /**
-   * A search over many more candidate moves, used only when hunting for a move
-   * that hands the player a forced mate. Such moves are the worst in the
-   * position, so a narrow search never surfaces them.
+   * A search over *every* legal move, used only when hunting for an error worth
+   * making.
+   *
+   * This is not an optimisation but a requirement. In a normal middlegame the
+   * top two dozen moves are all within a pawn of best, so a narrow search
+   * contains nothing that loses enough to be worth spotting, and the bot simply
+   * never errs.
    */
   readonly searchWide?: Search | undefined;
+  /**
+   * A cheap search used only to check whether an error has a clear refutation.
+   * Two lines and a shallow budget answer that; a full search is wasted on it.
+   */
+  readonly probe?: Search | undefined;
   readonly settings: Settings;
   /** Injectable for deterministic tests; defaults to Math.random. */
   readonly random?: (() => number) | undefined;
@@ -85,16 +102,20 @@ export async function chooseMove(
   if (!best) return undefined;
   const random = policy.random ?? Math.random;
 
-  if (context.wantsError) {
+  if (context.wantsError && Math.abs(best.cp) <= DECIDED_CP) {
+    // One wide search serves both kinds of error, so erring costs a single
+    // extra think rather than one per candidate.
+    const wide = await (policy.searchWide ?? policy.search)(fen);
+
     // A mate to find is a better lesson than a dropped piece, so try for one
     // first when the settings ask for it.
     if (random() < policy.settings.mateTrapShare) {
-      const trap = await pickMateTrap(policy, fen, lines);
+      const trap = pickMateTrap(wide, best, policy.settings, random);
       if (trap) {
         return { uci: trap.uci, kind: 'mate-trap', deliberateError: true, cpLoss: trap.cpLoss };
       }
     }
-    const blunder = await pickBlunder(policy, fen, lines);
+    const blunder = await pickBlunder(policy, fen, best, wide);
     if (blunder) {
       return { uci: blunder.uci, kind: 'blunder', deliberateError: true, cpLoss: blunder.cpLoss };
     }
@@ -157,33 +178,33 @@ export interface Candidate {
 /**
  * Find an error worth making: costly enough to matter, cheap enough to recover
  * from, and above all one with a clear refutation for the player to find.
+ *
+ * `wide` must come from a search over every legal move. The moves that lose a
+ * pawn or two are never in the top handful.
  */
 export async function pickBlunder(
   policy: Policy,
   fen: string,
-  lines: readonly PvLine[],
+  best: PvLine,
+  wide: readonly PvLine[],
 ): Promise<Candidate | undefined> {
-  const [best] = lines;
-  if (!best) return undefined;
-  // Erring on purpose in an already decided game teaches nothing.
-  if (Math.abs(best.cp) > DECIDED_CP) return undefined;
-
   const random = policy.random ?? Math.random;
   const { blunderMin, blunderMax } = policy.settings;
   const candidates = shuffle(
-    lines.filter(line => {
+    wide.filter(line => {
       const loss = lossOf(best, line);
       return loss >= blunderMin && loss <= blunderMax;
     }),
     random,
-  );
+  ).slice(0, MAX_PROBES);
 
+  const probe = policy.probe ?? policy.search;
   for (const candidate of candidates) {
     const uci = candidate.moves[0];
-    const replies = await policy.search(fenAfter(fen, uci));
+    const replies = await probe(fenAfter(fen, uci));
     const [punish, second] = replies;
     // A punishable error is one where the right reply stands out. If every reply
-    // is about as good there is no insight to have, so look for another error.
+    // is about as good there is no insight to have, so try another error.
     if (punish && second && punish.cp - second.cp >= PUNISH_MARGIN) {
       return { uci, cpLoss: lossOf(best, candidate) };
     }
@@ -194,25 +215,22 @@ export async function pickBlunder(
 /**
  * Find a move that hands the player a forced mate within the configured depth.
  *
- * These are the very worst moves in the position, so they never appear in the
- * narrow search used for ordinary play; this needs the wide one.
+ * Needs the same wide search: allowing mate is the worst thing available in a
+ * position, so it is the last move a narrow search would ever report.
  */
-export async function pickMateTrap(
-  policy: Policy,
-  fen: string,
-  lines: readonly PvLine[],
-): Promise<Candidate | undefined> {
-  const [best] = lines;
-  if (!best) return undefined;
-  if (Math.abs(best.cp) > DECIDED_CP) return undefined;
+export function pickMateTrap(
+  wide: readonly PvLine[],
+  best: PvLine,
+  settings: Settings,
+  random: () => number = Math.random,
+): Candidate | undefined {
   // If the bot is getting mated whatever it does, allowing it is not an error.
   if (best.mate !== undefined && best.mate < 0) return undefined;
 
-  const wide = await (policy.searchWide ?? policy.search)(fen);
   const traps = wide.filter(
-    line => line.mate !== undefined && line.mate < 0 && -line.mate <= policy.settings.maxMateDepth,
+    line => line.mate !== undefined && line.mate < 0 && -line.mate <= settings.maxMateDepth,
   );
-  const chosen = shuffle(traps, policy.random ?? Math.random)[0];
+  const chosen = shuffle(traps, random)[0];
   return chosen ? { uci: chosen.moves[0], cpLoss: lossOf(best, chosen) } : undefined;
 }
 
