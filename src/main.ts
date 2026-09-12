@@ -97,6 +97,7 @@ const buttons = {
   ignore: element('ignore'),
   resume: element('resume'),
   fork: element('fork'),
+  another: element('another'),
   swap: element('swap'),
   review: element('review-run'),
   newGame: element('new-game'),
@@ -511,6 +512,9 @@ async function main(): Promise<void> {
     // button, no true message and nothing to click.
     const needsAction = !tree.atLeaf || tree.turn !== you;
     buttons.fork.hidden = stopped || thinking || !needsAction || Boolean(outcomeOf(tree.fen));
+    // Only meaningful standing on a move the bot made: that is the one to replace.
+    const onBotMove = tree.current.move !== undefined && tree.current.move.by !== you;
+    buttons.another.hidden = stopped || thinking || !onBotMove;
     buttons.review.toggleAttribute('disabled', tree.root.children.length === 0 && !reviewing);
     buttons.review.textContent = reviewing ? 'Close review' : 'Review game';
   }
@@ -666,6 +670,9 @@ async function main(): Promise<void> {
 
       if (tree.punishArmed) {
         spotted++;
+        // You found it, so marking it in the list gives nothing away, and it is
+        // the position you will want to come back to.
+        revealed.add(tree.current.id);
         status('Good — you saw it.');
       }
       accept(uci);
@@ -751,7 +758,25 @@ async function main(): Promise<void> {
     void botTurn();
   }
 
-  async function botTurn(): Promise<void> {
+  /**
+   * Ask for a different move in this position.
+   *
+   * Steps back over the bot's move and asks again, excluding everything already
+   * played from there, so each press opens another branch rather than repeating
+   * itself or quietly returning the same move.
+   */
+  async function anotherMove(): Promise<void> {
+    const replacing = tree.current;
+    if (!replacing.move || replacing.move.by === you) return;
+
+    interrupt();
+    const from = replacing.parent ?? tree.root;
+    tree.goTo(from.id);
+    const tried = new Set(from.children.flatMap(child => (child.move ? [child.move.uci] : [])));
+    await botTurn(tried);
+  }
+
+  async function botTurn(exclude?: ReadonlySet<string>): Promise<void> {
     thinking = true;
     mode = { kind: 'play' };
     status(outcomeOf(tree.fen) ? liveStatus() : 'Thinking…');
@@ -779,8 +804,8 @@ async function main(): Promise<void> {
         lines,
         // While punishing, the bot plays the best move and nothing else.
         punishing()
-          ? { wantsError: false, acpl: Number.POSITIVE_INFINITY }
-          : { wantsError: wantsError(), acpl: stats.acpl('bot') },
+          ? { wantsError: false, acpl: Number.POSITIVE_INFINITY, exclude }
+          : { wantsError: wantsError(), acpl: stats.acpl('bot'), exclude },
       );
       if (!move) {
         thinking = false;
@@ -1013,6 +1038,9 @@ async function main(): Promise<void> {
     };
     buttons.fork.onclick = () => {
       void forkHere();
+    };
+    buttons.another.onclick = () => {
+      void anotherMove();
     };
     buttons.swap.onclick = () => {
       void swapSides();

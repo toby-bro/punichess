@@ -167,9 +167,10 @@ button:disabled {
   color: #fff;
 }
 
-/* A move the bot made wrong on purpose, once you have been shown it. */
+/* A move the bot made wrong on purpose, once you know about it. */
 .moves .move.bot-error {
-  color: #e08c3e;
+  color: #ef73b5;
+  font-weight: 600;
 }
 
 /* A move you were warned about and played regardless: where to come back to. */
