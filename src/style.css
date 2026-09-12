@@ -6,6 +6,10 @@
   color-scheme: dark;
   --bg: #161512;
   --fg: #bab9b5;
+  --dim: #8b8984;
+  --raised: #2c2a26;
+  --edge: #4a4844;
+  --alarm: #c33;
 }
 
 * {
@@ -20,13 +24,13 @@ body {
     16px/1.45 system-ui,
     -apple-system,
     sans-serif;
-  /* Keep the board clear of the S20's rounded corners and notch. */
+  /* Keep the board clear of the phone's rounded corners and notch. */
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
     env(safe-area-inset-left);
 }
 
 main {
-  max-width: min(100vw, 100svh - 8rem);
+  max-width: min(100vw, 100svh - 12rem);
   margin: 0 auto;
   padding: 12px;
 }
@@ -38,7 +42,81 @@ main {
 
 #status {
   min-height: 3.2em;
-  margin: 12px 0 8px;
+  margin: 10px 0 8px;
+}
+
+/* The alarm has to read as an interruption, not as commentary. */
+#status.alarm {
+  color: var(--alarm);
+  font-weight: 600;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.controls .spacer {
+  flex: 1;
+}
+
+button {
+  font: inherit;
+  padding: 8px 12px;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: var(--raised);
+  color: var(--fg);
+  cursor: pointer;
+  /* Comfortably tappable on a phone. */
+  min-width: 44px;
+  min-height: 44px;
+}
+
+button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+#moves {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  margin: 0 0 10px;
+  padding: 8px;
+  max-height: 5.4em;
+  overflow-y: auto;
+  list-style: none;
+  background: var(--raised);
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+#moves:empty {
+  display: none;
+}
+
+#moves li {
+  padding: 1px 5px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#moves li.number {
+  color: var(--dim);
+  cursor: default;
+}
+
+#moves li.current {
+  background: var(--edge);
+  color: #fff;
+}
+
+/* A move the bot made wrong on purpose, once you have been shown it. */
+#moves li.error {
+  color: var(--alarm);
 }
 
 .bar {
@@ -47,14 +125,5 @@ main {
   align-items: center;
   gap: 12px;
   font-size: 14px;
-  opacity: 0.8;
-}
-
-button {
-  font: inherit;
-  padding: 8px 14px;
-  border: 1px solid #4a4844;
-  border-radius: 6px;
-  background: #2c2a26;
-  color: var(--fg);
+  color: var(--dim);
 }

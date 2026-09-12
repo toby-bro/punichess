@@ -10,10 +10,24 @@
   <body>
     <main>
       <div id="board"></div>
+
       <p id="status">Loading…</p>
+
+      <div class="controls">
+        <button id="first" type="button" title="Start (Home)" aria-label="Go to start">⏮</button>
+        <button id="back" type="button" title="Back (←)" aria-label="Previous move">◀</button>
+        <button id="forward" type="button" title="Forward (→)" aria-label="Next move">▶</button>
+        <button id="last" type="button" title="Latest (End)" aria-label="Go to latest">⏭</button>
+        <span class="spacer"></span>
+        <button id="reveal" type="button" hidden>Show me</button>
+        <button id="resume" type="button" hidden>Back to game</button>
+        <button id="fork" type="button" hidden>Play from here</button>
+      </div>
+
+      <ol id="moves" aria-label="Moves played"></ol>
+
       <div class="bar">
         <span id="score">spotted 0 · missed 0</span>
-        <button id="giveup" hidden>Show me</button>
       </div>
     </main>
     <script type="module" src="/src/main.ts"></script>
