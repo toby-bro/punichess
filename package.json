@@ -14,7 +14,8 @@
     "test:watch": "node --test --watch 'src/**/*.test.ts'",
     "test:coverage": "node --test --experimental-test-coverage 'src/**/*.test.ts'",
     "test:engine": "node scripts/smoke.mjs",
-    "check": "npm run lint && npm run typecheck && npm run test"
+    "check": "npm run lint && npm run typecheck && npm run test",
+    "bench": "node scripts/timing.mjs"
   },
   "license": "GPL-3.0-or-later",
   "type": "module",

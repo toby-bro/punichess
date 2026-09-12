@@ -167,6 +167,27 @@ claimed.
 have a refutation that clearly beats the second-best reply. Otherwise there is
 nothing to spot, and stopping you for missing it would be unfair.
 
+## How long the bot thinks
+
+`npm run bench` prints what each search budget actually costs on the lite
+single-threaded engine. Measured there:
+
+| budget                                                      | time   | depth |
+| ----------------------------------------------------------- | ------ | ----- |
+| MultiPV 8 @ 350k — every move                               | 0.8 s  | 15    |
+| MultiPV 40 @ 400k — only when erring on purpose             | 0.8 s  | 11    |
+| MultiPV 2 @ 250k — punishability probe, at most three       | 0.55 s | 17    |
+| MultiPV 8 @ 1.2M — only when a verdict is too close to call | 2.7 s  | 18    |
+
+So an ordinary move is about a second, and a move where the bot goes hunting for
+an error is two to three. Budgets are counted in nodes rather than time so the
+same position always scores the same, whatever else the phone is doing.
+
+The numbers also explain a design constraint: a million nodes takes 2.3 seconds
+and reaches _depth 14_, while 350k reaches depth 15 in 0.8. Past a point the
+extra nodes go into widening the MultiPV window rather than seeing further, and
+for judging whether a move dropped a pawn that is wasted.
+
 ## Tests
 
 ```sh
@@ -180,10 +201,17 @@ real positions.
 
 ## Licence
 
-**GPL-3.0-or-later**, and not by choice: Stockfish, chessground and chessops are
-all GPL and all get bundled into the page, which makes the published app a
-combined work. See [NOTICE.md](NOTICE.md) for what that means in practice, and
-for what was and was not taken from lichess (no source code; two formulas).
+**GPL-3.0-or-later** ([LICENSE](LICENSE)), and not by choice: Stockfish,
+chessground and chessops are all GPL and all get bundled into the page, which
+makes this a combined work.
 
-Running it privately carries no obligation. Publishing it means keeping it GPL
-and offering the source.
+No lichess source code was copied — everything under `src/` was written here.
+Two of the libraries (chessground, chessops) come from the lichess project and
+are used unmodified from npm; their server, lila, is AGPL and is not used in any
+form, so that licence never enters into it. Two ideas were borrowed and
+reimplemented: the centipawn-to-win-probability curve, and the
+inaccuracy/mistake/blunder boundaries at 10/20/30% of winning chances.
+
+Running it privately carries no obligation. Publishing it — which for a web app
+means letting anyone load the page — means keeping it GPL and offering the
+source.

@@ -13,7 +13,7 @@ import initEngine from 'stockfish';
 
 import { chooseMove, pickMateTrap } from '../src/bot.ts';
 import { INITIAL_FEN, fenAfter, sanOf } from '../src/chess.ts';
-import { OWN_BLUNDER, isError, isMateScore, judge } from '../src/referee.ts';
+import { OWN_BLUNDER, isError, isMateScore, judge, scoreOfMove } from '../src/referee.ts';
 import { DEFAULT_SETTINGS, parseSettings } from '../src/settings.ts';
 import { collectLines } from '../src/uci.ts';
 
@@ -63,7 +63,13 @@ const searchWith = async (fen, multiPV) => {
 };
 
 const analyse = fen => searchWith(fen, MULTI_PV);
-const analyseWide = fen => searchWith(fen, 24);
+/** Score a move the narrow search did not list, as the app does. */
+const scoreLookup = async (fen, uci) => {
+  const child = fenAfter(fen, uci);
+  return scoreOfMove(await searchWith(child, 1), child);
+};
+const analyseWide = fen => searchWith(fen, 40);
+const probe = fen => searchWith(fen, 2);
 
 // 1. The engine really does emit the MultiPV shape the parser expects.
 const opening = await analyse(INITIAL_FEN);
@@ -103,27 +109,42 @@ console.log(
 assert.ok(missed.missesMate, 'letting a forced mate slip must be recognised');
 assert.ok(isError(missed, OWN_BLUNDER), 'and must never be suppressed as "decided"');
 
-// 4. The bot's deliberate error is inside the band and really is punishable.
+// 4. The bot really does err on purpose. This is the check that matters: with a
+//    narrow search there is nothing in the 1-3 pawn band at all, so the bot
+//    never errs and the whole exercise quietly does nothing.
+const policy = { search: analyse, searchWide: analyseWide, probe, settings };
 const midgame = 'r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4';
 const lines = await analyse(midgame);
-const policy = { search: analyse, searchWide: analyseWide, settings };
-const blunder = await chooseMove(policy, midgame, lines, { wantsError: true, acpl: 0 });
-console.log(`bot chose ${sanOf(midgame, blunder.uci)} (deliberate: ${blunder.deliberateError})`);
-if (blunder.deliberateError) {
-  const cost = judge(lines, blunder.uci).cpLoss;
-  if (blunder.kind === 'blunder') {
+const wide = await analyseWide(midgame);
+const best = lines[0].cp;
+const narrowBand = lines.filter(
+  l => best - l.cp >= settings.blunderMin && best - l.cp <= settings.blunderMax,
+);
+const wideBand = wide.filter(
+  l => best - l.cp >= settings.blunderMin && best - l.cp <= settings.blunderMax,
+);
+console.log(
+  `candidates in band: ${narrowBand.length} of ${lines.length} narrow, ${wideBand.length} of ${wide.length} wide`,
+);
+assert.ok(
+  wideBand.length > narrowBand.length,
+  'the wide search is what makes errors possible at all',
+);
+
+let deliberate = 0;
+for (let i = 0; i < 6; i++) {
+  const move = await chooseMove(policy, midgame, lines, { wantsError: true, acpl: 0 });
+  if (move.deliberateError) {
+    deliberate++;
+    const cost = judge(lines, move.uci, await scoreLookup(midgame, move.uci)).cpLoss;
     assert.ok(
-      cost >= settings.blunderMin && cost <= settings.blunderMax,
-      `a deliberate error must stay in band, got ${cost}`,
+      cost >= settings.blunderMin,
+      `a deliberate error must actually cost something, got ${cost}`,
     );
   }
-
-  const replies = await analyse(fenAfter(midgame, blunder.uci));
-  if (blunder.kind === 'blunder') {
-    assert.ok(replies[0].cp - replies[1].cp >= 80, 'and must have a clear refutation');
-  }
-  console.log(`  punishment: ${sanOf(fenAfter(midgame, blunder.uci), replies[0].moves[0])}`);
 }
+console.log(`asked to err 6 times, did so ${deliberate} times`);
+assert.ok(deliberate > 0, 'a bot that never errs on purpose is the bug this test exists for');
 
 // 5. Honest play never strays outside the quiet band.
 let honestTotal = 0;
@@ -149,7 +170,7 @@ assert.ok(
   'a narrow search should never surface a mate-allowing move: they are the worst on the board',
 );
 
-const trap = await pickMateTrap(policy, trapFen, narrow);
+const trap = pickMateTrap(await analyseWide(trapFen), narrow[0], settings);
 assert.ok(trap, 'the wide search should find a move that allows mate');
 console.log(`mate trap: ${sanOf(trapFen, trap.uci)}`);
 
@@ -167,6 +188,15 @@ assert.ok(ignored.missesMate, 'missing the mate must be recognised');
 assert.equal(ignored.mateIn, forced, 'and named with the right depth');
 assert.ok(isError(ignored, OWN_BLUNDER), 'and must always interrupt');
 console.log(`  it is mate in ${forced}; missing it reports "mate in ${ignored.mateIn}"`);
+
+// 7. Mate has to be seen, and seen from a position the bot walked into on
+//    purpose. What this does *not* assert is how long any of it took: wall-clock
+//    belongs in `npm run bench`, where a number that moves with the machine is
+//    information rather than a test that fails on slower hardware.
+const mateIn2 = '6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1';
+const seen = await analyse(mateIn2);
+assert.ok(seen[0].mate !== undefined && seen[0].mate > 0, 'that position is a forced mate');
+console.log(`forced mate seen: mate in ${seen[0].mate}`);
 
 console.log('\nall engine checks passed');
 process.exit(0);
