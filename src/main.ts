@@ -4,25 +4,34 @@ import { Chessground } from 'chessground';
 import type { Api } from 'chessground/api';
 import type { DrawShape } from 'chessground/draw';
 import type { Key } from 'chessground/types';
+import type { Color } from 'chessops/types';
 
 import { type Policy, chooseMove } from './bot.ts';
 import { INITIAL_FEN, fenAfter, legalDests, noDests, outcomeOf, sanLine, turnOf } from './chess.ts';
 import { Engine } from './engine.ts';
 import { History } from './history.ts';
-import { MISSED_PUNISH, OWN_BLUNDER, type Verdict, isError, judge } from './referee.ts';
+import { type Verdict, isError, judge, thresholdsFor, winPercent } from './referee.ts';
+import { renderReview } from './review-view.ts';
+import { reviewGame } from './review.ts';
+import { mountSettings } from './settings-panel.ts';
+import { loadSettings, saveSettings } from './settings.ts';
+import { Stats } from './stats.ts';
 
-/** The colour you play. */
-const YOU = 'white';
+/** The colour you play, and the one the bot gets. */
+const YOU: Color = 'white';
+const BOT: Color = 'black';
 /** Budget for move selection and for judging your move. */
 const SEARCH = { multiPV: 8, nodes: 1_000_000 } as const;
 /** A deeper budget, used before accusing you of anything. */
 const VERIFY = { multiPV: 8, nodes: 4_000_000 } as const;
-/** Deliberate errors start once the opening is over. */
-const BLUNDER_FROM_PLY = 16;
-/** Roughly this many deliberate errors per game. */
-const BLUNDERS_PER_GAME = 3;
-/** Chance of erring on any given eligible move. */
-const BLUNDER_CHANCE = 0.25;
+/**
+ * A search over many more candidates, used only when hunting for a move that
+ * hands you a forced mate: those are the worst moves in the position and never
+ * appear in a narrow search.
+ */
+const WIDE = { multiPV: 24, nodes: 700_000 } as const;
+/** Budget for the post-game review, per position. */
+const REVIEW = { multiPV: 3, nodes: 700_000 } as const;
 /** How many moves of the best line the reveal lets you step through. */
 const REVEAL_DEPTH = 8;
 
@@ -51,7 +60,9 @@ function element(id: string): HTMLElement {
 
 const statusEl = element('status');
 const scoreEl = element('score');
+const acplEl = element('acpl');
 const movesEl = element('moves');
+const reviewEl = element('review');
 const buttons = {
   first: element('first'),
   back: element('back'),
@@ -60,6 +71,8 @@ const buttons = {
   reveal: element('reveal'),
   resume: element('resume'),
   fork: element('fork'),
+  review: element('review-run'),
+  newGame: element('new-game'),
 };
 
 const square = (uci: string, end: 0 | 2): Key => uci.slice(end, end + 2) as Key;
@@ -76,12 +89,19 @@ function status(text: string, alarm = false): void {
 
 async function main(): Promise<void> {
   const engine = new Engine(`${import.meta.env.BASE_URL}engine/stockfish-18-lite-single.js`);
-  const policy: Policy = { search: fen => engine.analyse(fen, SEARCH) };
+  let settings = loadSettings();
   const history = new History(INITIAL_FEN);
+  const stats = new Stats();
+
+  const policy = (): Policy => ({
+    search: fen => engine.analyse(fen, SEARCH),
+    searchWide: fen => engine.analyse(fen, WIDE),
+    settings,
+  });
 
   let mode: Mode = { kind: 'play' };
   let thinking = true;
-  let blundersLeft = BLUNDERS_PER_GAME;
+  let blundersLeft = settings.blundersPerGame;
   let retries = 0;
   let spotted = 0;
   let missed = 0;
@@ -102,6 +122,14 @@ async function main(): Promise<void> {
     animation: { duration: 200 },
     draggable: { showGhost: true },
     drawable: { enabled: true },
+  });
+
+  const panel = mountSettings(element('settings'), settings, changed => {
+    // Raising the allowance mid-game should make more errors possible, not
+    // fewer, so track the budget rather than resetting it.
+    blundersLeft += changed.blundersPerGame - settings.blundersPerGame;
+    settings = changed;
+    saveSettings(settings);
   });
 
   status('Loading engine…');
@@ -201,6 +229,8 @@ async function main(): Promise<void> {
       buttons.last.toggleAttribute('disabled', history.atLive);
     }
     buttons.reveal.hidden = mode.kind !== 'rejected';
+    buttons.review.toggleAttribute('disabled', thinking || history.length === 0);
+    buttons.newGame.toggleAttribute('disabled', thinking);
     buttons.resume.hidden = !analysing;
     // Offer to continue from an earlier position only when there is something
     // to discard and you are not in the middle of being corrected.
@@ -215,6 +245,9 @@ async function main(): Promise<void> {
 
   function updateScore(): void {
     scoreEl.textContent = `spotted ${spotted} · missed ${missed}`;
+    const you = stats.summary(YOU);
+    const bot = stats.summary(BOT);
+    acplEl.textContent = you.moves === 0 ? '' : `you ${you.acpl} cp · bot ${bot.acpl} cp`;
   }
 
   // ---------------------------------------------------------------- navigation
@@ -280,6 +313,12 @@ async function main(): Promise<void> {
     buttons.fork.onclick = () => {
       void forkHere();
     };
+    buttons.review.onclick = () => {
+      void runReview();
+    };
+    buttons.newGame.onclick = () => {
+      void newGame();
+    };
 
     document.addEventListener('keydown', event => {
       const keys: Record<string, () => void> = {
@@ -332,6 +371,59 @@ async function main(): Promise<void> {
     await botTurn();
   }
 
+  /**
+   * Analyse the whole game and show it.
+   *
+   * A second or so per position, so it reports progress and hands control back
+   * between searches rather than freezing the board.
+   */
+  async function runReview(): Promise<void> {
+    if (thinking || history.length === 0) return;
+    thinking = true;
+    renderButtons();
+    reviewEl.hidden = false;
+    reviewEl.textContent = 'Reviewing…';
+
+    try {
+      const review = await reviewGame(
+        INITIAL_FEN,
+        history.plies,
+        fen => engine.analyse(fen, REVIEW),
+        progress => {
+          reviewEl.textContent = `Reviewing… ${progress.done}/${progress.total}`;
+        },
+      );
+      renderReview(reviewEl, review, ply => {
+        goTo(ply);
+        document.getElementById('board')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    } finally {
+      thinking = false;
+      render();
+    }
+  }
+
+  async function newGame(): Promise<void> {
+    if (thinking) return;
+    history.first();
+    history.truncate();
+    stats.reset();
+    revealed.clear();
+    blundersLeft = settings.blundersPerGame;
+    spotted = 0;
+    missed = 0;
+    retries = 0;
+    mode = { kind: 'play' };
+    reviewEl.hidden = true;
+    reviewEl.replaceChildren();
+    panel.update(settings);
+    updateScore();
+    await engine.newGame();
+    pending = engine.analyse(history.fen, SEARCH);
+    status('New game. Your move.');
+    render();
+  }
+
   // ----------------------------------------------------------------- the game
 
   async function onUserMove(orig: Key, dest: Key): Promise<void> {
@@ -343,7 +435,7 @@ async function main(): Promise<void> {
     // Forking: playing from an earlier position discards the continuation, so
     // the analysis started for the live position no longer applies.
     const lines = history.atLive ? await pending : await engine.analyse(history.fen, SEARCH);
-    const thresholds = history.punishArmed ? MISSED_PUNISH : OWN_BLUNDER;
+    const thresholds = thresholdsFor(settings, history.punishArmed);
     const quick = judge(lines, uci);
 
     if (quick && isError(quick, thresholds)) {
@@ -360,10 +452,13 @@ async function main(): Promise<void> {
 
     if (history.punishArmed) {
       spotted++;
-      updateScore();
     }
+    // Forking rewrites the tail of the game, so the accuracy record follows it.
+    forget(history.cursor);
+    stats.add(history.turn, quick?.cpLoss ?? 0, quick?.winLoss ?? 0);
     history.play(uci);
     retries = 0;
+    updateScore();
     await botTurn();
   }
 
@@ -412,7 +507,11 @@ async function main(): Promise<void> {
     }
 
     const lines = await engine.analyse(history.fen, SEARCH);
-    const move = await chooseMove(policy, history.fen, lines, wantsError());
+    const botColour = history.turn;
+    const move = await chooseMove(policy(), history.fen, lines, {
+      wantsError: wantsError(),
+      acpl: stats.acpl(botColour),
+    });
     if (!move) {
       thinking = false;
       status('The engine sees no move here.');
@@ -421,6 +520,13 @@ async function main(): Promise<void> {
     }
     if (move.deliberateError) blundersLeft--;
 
+    const best = lines[0];
+    forget(history.cursor);
+    stats.add(
+      botColour,
+      move.cpLoss,
+      best ? Math.max(0, winPercent(best.cp) - winPercent(best.cp - move.cpLoss)) : 0,
+    );
     // Say nothing about it. Spotting it is the whole point.
     history.play(move.uci, { deliberateError: move.deliberateError });
     thinking = false;
@@ -430,8 +536,14 @@ async function main(): Promise<void> {
   }
 
   function wantsError(): boolean {
-    if (blundersLeft <= 0 || history.length < BLUNDER_FROM_PLY) return false;
-    return Math.random() < BLUNDER_CHANCE;
+    if (blundersLeft <= 0 || history.length < settings.blunderFromPly) return false;
+    return Math.random() < settings.blunderChance;
+  }
+
+  /** Drop accuracy and reveal records for moves that no longer exist. */
+  function forget(from: number): void {
+    stats.truncate(from);
+    for (const index of [...revealed]) if (index >= from) revealed.delete(index);
   }
 
   function withPromotion(orig: Key, dest: Key): string {
@@ -444,7 +556,11 @@ async function main(): Promise<void> {
 
 /** Say what the move cost, in the terms that actually fit the position. */
 function describeCost(verdict: Verdict): string {
-  if (verdict.missesMate) return 'That lets a forced mate slip.';
+  if (verdict.missesMate) {
+    return verdict.mateIn === undefined
+      ? 'That lets a forced mate slip.'
+      : `That misses mate in ${verdict.mateIn}.`;
+  }
   if (verdict.hangsMate) return 'That walks into a forced mate.';
   return (
     `That costs ${(verdict.cpLoss / 100).toFixed(1)} pawns, ` +

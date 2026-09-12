@@ -28,7 +28,20 @@
 
       <div class="bar">
         <span id="score">spotted 0 · missed 0</span>
+        <span id="acpl"></span>
       </div>
+
+      <div class="controls">
+        <button id="review-run" type="button">Review game</button>
+        <button id="new-game" type="button">New game</button>
+      </div>
+
+      <details id="settings-box">
+        <summary>Bot settings</summary>
+        <div id="settings"></div>
+      </details>
+
+      <section id="review" hidden aria-label="Game review"></section>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
