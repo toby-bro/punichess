@@ -10,6 +10,7 @@ import type { Color } from 'chessops/types';
 
 import { areaPath, chartPoints, linePath } from './chart.ts';
 import type { Review, ReviewedMove } from './review.ts';
+import { scrollWithin } from './scroll.ts';
 import type { Judgement, Summary } from './stats.ts';
 import { MATE_CP } from './uci.ts';
 
@@ -72,7 +73,8 @@ export function renderReview(
       const index =
         nodeId === options.rootId ? 0 : review.moves.findIndex(move => move.nodeId === nodeId) + 1;
       graph.mark(index > 0 || nodeId === options.rootId ? index : undefined);
-      rows.get(nodeId)?.scrollIntoView({ block: 'nearest' });
+      const row = rows.get(nodeId);
+      if (row) scrollWithin(list, row);
     },
   };
 }

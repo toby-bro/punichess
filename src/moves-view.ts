@@ -6,6 +6,7 @@
  * is the shape of everything that was tried.
  */
 
+import { scrollWithin } from './scroll.ts';
 import type { GameTree, TreeNode } from './tree.ts';
 
 export interface MovesView {
@@ -24,7 +25,9 @@ export function mountMoves(root: HTMLElement, tree: GameTree, options: MovesOpti
       root.replaceChildren();
       writeLine(root, tree, tree.root, options, true);
       const current = root.querySelector('.current');
-      current?.scrollIntoView({ block: 'nearest' });
+      // Scrolls the list, not the window: pressing an arrow key must not move
+      // the board out from under you.
+      if (current instanceof HTMLElement) scrollWithin(root, current);
     },
   };
   view.render();
