@@ -44,6 +44,8 @@ export interface PlayOptions {
 export class GameTree {
   readonly root: TreeNode;
   readonly #byId = new Map<number, TreeNode>();
+  /** Subtree heights, rebuilt whenever the shape of the tree changes. */
+  #heights = new Map<number, number>();
   #current: TreeNode;
   #nextId = 1;
 
@@ -99,15 +101,61 @@ export class GameTree {
     return this.path.flatMap(node => (node.move ? [node.move] : []));
   }
 
-  /** The first line of the tree: root, then the first continuation each time. */
+  /**
+   * The main line: root, then the longest continuation at every fork.
+   *
+   * Length rather than order of play, because a two-move sideline you tried once
+   * should not take over the arrow keys from the game you actually played. Ties
+   * go to whichever was played first.
+   */
   get mainline(): TreeNode[] {
     const nodes: TreeNode[] = [this.root];
-    let node = this.root;
-    while (node.children[0]) {
-      node = node.children[0];
+    for (let node = this.mainChild(this.root); node; node = this.mainChild(node)) {
       nodes.push(node);
     }
     return nodes;
+  }
+
+  /**
+   * The continuation to follow from a node: the one with the longest line below
+   * it. Undefined at the end of a branch.
+   */
+  mainChild(node: TreeNode): TreeNode | undefined {
+    let best: TreeNode | undefined;
+    let tallest = -1;
+    for (const child of node.children) {
+      const height = this.#height(child);
+      // Strictly taller, so an equal-length branch never displaces the earlier one.
+      if (height > tallest) {
+        best = child;
+        tallest = height;
+      }
+    }
+    return best;
+  }
+
+  /** How many plies the longest line below a node runs to. */
+  #height(node: TreeNode): number {
+    const known = this.#heights.get(node.id);
+    if (known !== undefined) return known;
+
+    // Iterative: a long game is deeper than the stack is comfortable with.
+    const stack: TreeNode[] = [node];
+    const order: TreeNode[] = [];
+    while (stack.length > 0) {
+      const next = stack.pop();
+      if (!next) break;
+      order.push(next);
+      for (const child of next.children) stack.push(child);
+    }
+    for (const visited of order.reverse()) {
+      let tallest = 0;
+      for (const child of visited.children) {
+        tallest = Math.max(tallest, (this.#heights.get(child.id) ?? 0) + 1);
+      }
+      this.#heights.set(visited.id, tallest);
+    }
+    return this.#heights.get(node.id) ?? 0;
   }
 
   /** Every node, in the order they were created. */
@@ -150,6 +198,7 @@ export class GameTree {
     };
     from.children.push(node);
     this.#byId.set(node.id, node);
+    this.#heights.clear();
     this.#current = node;
     return node;
   }
@@ -183,9 +232,9 @@ export class GameTree {
     if (this.#current.parent) this.#current = this.#current.parent;
   }
 
-  /** Forward along the branch that was played first from here. */
+  /** Forward along the longest line from here. */
   forward(): void {
-    const next = this.#current.children[0];
+    const next = this.mainChild(this.#current);
     if (next) this.#current = next;
   }
 
@@ -193,14 +242,20 @@ export class GameTree {
     this.#current = this.root;
   }
 
-  /** To the end of the current branch. */
+  /** To the end of the line, following the longest branch at each fork. */
   last(): void {
-    while (this.#current.children[0]) this.#current = this.#current.children[0];
+    for (let next = this.mainChild(this.#current); next; next = this.mainChild(next)) {
+      this.#current = next;
+    }
   }
 
   /**
-   * Make the current branch the first one at every step back to the root, so it
-   * becomes the line that `mainline` and the forward button follow.
+   * Put the current branch first among its siblings at every step back to the
+   * root.
+   *
+   * Ordering decides ties only: navigation follows the longest line, so this
+   * settles which of two equally long branches leads, and fixes the order
+   * variations are listed in.
    */
   promote(): void {
     for (let node = this.#current; node.parent; node = node.parent) {
@@ -230,6 +285,7 @@ export class GameTree {
     };
     visit(node);
     for (const id of doomed) this.#byId.delete(id);
+    this.#heights.clear();
     if (doomed.has(this.#current.id)) this.#current = node.parent;
   }
 }

@@ -50,8 +50,10 @@ function writeLine(
   let node = from;
   let first = true;
   while (node.children.length > 0) {
-    const [main, ...alternatives] = node.children;
+    // The longest line runs inline, matching where the arrow keys will go.
+    const main = tree.mainChild(node);
     if (!main) break;
+    const alternatives = node.children.filter(child => child !== main);
 
     into.append(moveElement(tree, main, options, first));
     first = false;

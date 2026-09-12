@@ -119,28 +119,74 @@ describe('GameTree', () => {
       assert.equal(tree.root.children.length, 2);
     });
 
-    it('walks the first branch as the mainline', () => {
+    it('follows the longest line, not the one played first', () => {
       const tree = opening();
       tree.first();
       tree.forward();
-      tree.play('c7c5');
+      tree.play('c7c5'); // a one-move sideline against a two-move main line
       assert.deepEqual(
         tree.mainline.flatMap(node => (node.move ? [node.move.san] : [])),
         ['e4', 'e5', 'Nf3'],
-        'the original line is still the mainline',
+        'a short experiment must not take over the arrow keys',
       );
     });
 
-    it('promotes a branch to the mainline on request', () => {
+    it('hands the main line over once the branch outgrows it', () => {
       const tree = opening();
       tree.first();
       tree.forward();
       tree.play('c7c5');
+      tree.play('g1f3');
+      tree.play('d7d6'); // now three moves against the original two
+      assert.deepEqual(
+        tree.mainline.flatMap(node => (node.move ? [node.move.san] : [])),
+        ['e4', 'c5', 'Nf3', 'd6'],
+      );
+    });
+
+    it('keeps the earlier branch on a tie', () => {
+      const tree = opening();
+      tree.first();
+      tree.forward();
+      tree.play('c7c5');
+      tree.play('g1f3'); // equal length to e5 Nf3
+      assert.deepEqual(
+        tree.mainline.flatMap(node => (node.move ? [node.move.san] : [])),
+        ['e4', 'e5', 'Nf3'],
+      );
+    });
+
+    it('promote settles a tie in favour of the current branch', () => {
+      const tree = opening();
+      tree.first();
+      tree.forward();
+      tree.play('c7c5');
+      tree.play('g1f3');
       tree.promote();
       assert.deepEqual(
         tree.mainline.flatMap(node => (node.move ? [node.move.san] : [])),
-        ['e4', 'c5'],
+        ['e4', 'c5', 'Nf3'],
       );
+    });
+
+    it('steps forward along the longest line', () => {
+      const tree = opening();
+      tree.first();
+      tree.forward();
+      tree.play('c7c5');
+      tree.goTo(tree.mainline[1]?.id ?? 0);
+      tree.forward();
+      assert.equal(tree.lastMove?.san, 'e5', 'the longer continuation wins');
+    });
+
+    it('runs to the end of the longest line', () => {
+      const tree = opening();
+      tree.first();
+      tree.forward();
+      tree.play('c7c5');
+      tree.first();
+      tree.last();
+      assert.equal(tree.lastMove?.san, 'Nf3');
     });
   });
 
@@ -235,5 +281,40 @@ describe('marking a move you were warned about', () => {
     assert.doesNotThrow(() => {
       tree.markPlayedAnyway();
     });
+  });
+});
+
+describe('longest-branch navigation at scale', () => {
+  it('stays correct through several nested forks', () => {
+    const tree = new GameTree();
+    // Main line: 1. e4 e5 2. Nf3 Nc6 3. Bb5
+    for (const uci of ['e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1b5']) tree.play(uci);
+
+    // A short branch at move 2, and a longer one at move 1.
+    tree.goTo(tree.mainline[3]?.id ?? 0); // after 2. Nf3
+    tree.play('g8f6');
+
+    tree.goTo(tree.mainline[1]?.id ?? 0); // after 1. e4
+    for (const uci of ['c7c5', 'g1f3', 'd7d6', 'd2d4', 'c5d4']) tree.play(uci);
+
+    tree.first();
+    tree.last();
+    assert.deepEqual(
+      tree.mainline.flatMap(node => (node.move ? [node.move.san] : [])),
+      ['e4', 'c5', 'Nf3', 'd6', 'd4', 'cxd4'],
+      'the Sicilian branch is now the longest, so it leads',
+    );
+  });
+
+  it('does not fall over on a long game', () => {
+    const tree = new GameTree();
+    // A legal shuffle that can repeat indefinitely.
+    const loop = ['g1f3', 'g8f6', 'f3g1', 'f6g8'];
+    for (let i = 0; i < 200; i++) tree.play(loop[i % loop.length] ?? 'g1f3');
+    tree.first();
+    assert.doesNotThrow(() => {
+      tree.last();
+    });
+    assert.equal(tree.mainline.length, 201, 'root plus every ply');
   });
 });
