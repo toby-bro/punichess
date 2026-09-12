@@ -58,7 +58,9 @@ const analyse = async fen => {
 const opening = await analyse(INITIAL_FEN);
 console.log(`opening: ${opening.length} lines at depth ${opening[0].depth}`);
 for (const line of opening) {
-  console.log(`  ${line.multipv}. ${sanOf(INITIAL_FEN, line.moves[0])} ${(line.cp / 100).toFixed(2)}`);
+  console.log(
+    `  ${line.multipv}. ${sanOf(INITIAL_FEN, line.moves[0])} ${(line.cp / 100).toFixed(2)}`,
+  );
 }
 assert.equal(opening.length, MULTI_PV, 'MultiPV should yield one line per slot');
 assert.ok(
@@ -74,7 +76,9 @@ assert.equal(judge(opening, opening[0].moves[0]).cpLoss, 0, 'the best move costs
 
 // 2. Mate scores survive the round trip and dominate every ordinary evaluation.
 const mate = await analyse('6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1');
-console.log(`mate: ${sanOf('6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1', mate[0].moves[0])} (mate ${mate[0].mate})`);
+console.log(
+  `mate: ${sanOf('6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1', mate[0].moves[0])} (mate ${mate[0].mate})`,
+);
 assert.equal(mate[0].mate, 1, 'Ra8 is mate in 1');
 assert.ok(isMateScore(mate[0].cp));
 
@@ -82,7 +86,9 @@ assert.ok(isMateScore(mate[0].cp));
 //    the "already decided, stop nagging" threshold. This is the case the whole
 //    app exists for.
 const missed = judge(mate, mate.at(-1).moves[0]);
-console.log(`missing the mate -> missesMate=${missed.missesMate}, flagged=${isError(missed, OWN_BLUNDER)}`);
+console.log(
+  `missing the mate -> missesMate=${missed.missesMate}, flagged=${isError(missed, OWN_BLUNDER)}`,
+);
 assert.ok(missed.missesMate, 'letting a forced mate slip must be recognised');
 assert.ok(isError(missed, OWN_BLUNDER), 'and must never be suppressed as "decided"');
 

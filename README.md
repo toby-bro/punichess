@@ -6,11 +6,11 @@ you read after you already lost.
 
 Two interruptions, armed by different rules:
 
-| When | Trigger | What happens |
-| --- | --- | --- |
-| The bot just erred on purpose | your reply loses ≥ 0.5 pawns | "Are you sure?" → take back → try again |
-| Any other move of yours | your move loses ≥ 1.1 pawns | same |
-| Either side, a forced mate is on | mate missed or walked into | always fires, never suppressed |
+| When                             | Trigger                      | What happens                            |
+| -------------------------------- | ---------------------------- | --------------------------------------- |
+| The bot just erred on purpose    | your reply loses ≥ 0.5 pawns | "Are you sure?" → take back → try again |
+| Any other move of yours          | your move loses ≥ 1.1 pawns  | same                                    |
+| Either side, a forced mate is on | mate missed or walked into   | always fires, never suppressed          |
 
 The bot never announces its errors. Spotting them is the entire point. A counter
 tracks how many you caught versus missed.
@@ -33,8 +33,8 @@ To play on the phone, put it on the same network and open `http://<pc-ip>:8888`.
 
 ### Installing on the phone
 
-Build, publish `dist/` as a static site, open it in Chrome, and use *Add to home
-screen*. It then works fully offline: the service worker precaches the engine
+Build, publish `dist/` as a static site, open it in Chrome, and use _Add to home
+screen_. It then works fully offline: the service worker precaches the engine
 (~7.3 MB) along with everything else.
 
 ### Changing dependencies
@@ -66,7 +66,7 @@ main.ts      the game loop and the board
 
 Everything rests on one primitive: a **MultiPV** search of every position, giving
 the top N moves with a score each. A move's cost is then just its distance from
-the best move *inside that same search*.
+the best move _inside that same search_.
 
 Three decisions carry most of the weight:
 
@@ -77,10 +77,10 @@ in — and any alarm is re-verified at four times the node budget before it fire
 
 **Judge in winning chances, not just pawns.** Dropping 1.00 at a level 0.00 is
 catastrophic; dropping 1.00 at +7.00 is noise. Scores are converted through
-lichess's win-probability curve, and a move must lose both material *and* real
+lichess's win-probability curve, and a move must lose both material _and_ real
 winning chances to count. Mate bypasses this entirely — a missed mate always fires.
 
-**Only make punishable mistakes.** A deliberate error must cost 1–3 pawns *and*
+**Only make punishable mistakes.** A deliberate error must cost 1–3 pawns _and_
 have a refutation that clearly beats the second-best reply. Otherwise there is
 nothing to spot, and stopping you for missing it would be unfair.
 
