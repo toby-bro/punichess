@@ -97,6 +97,18 @@ export interface Thresholds {
   readonly cp: number;
   /** Minimum loss of winning chances, in percentage points. */
   readonly win: number;
+  /**
+   * Keep judging even when the game is already decided, on material alone.
+   *
+   * Normally a decided position silences the alarm and winning chances gate the
+   * centipawn bar, because nagging about a half-pawn when you are three down is
+   * noise. Once you have deliberately played a losing move to see it punished,
+   * both of those work against you: the position is lost by construction, so
+   * nothing you do afterwards moves the win curve enough to register, and you
+   * would fight the whole refutation in silence. In there, material lost is the
+   * thing worth hearing about.
+   */
+  readonly evenWhenDecided?: boolean | undefined;
 }
 
 /** Failing to punish an error the bot made on purpose: a deliberately low bar. */
@@ -118,10 +130,14 @@ export const DECIDED_CP = 500;
  * stopped for is a matter of taste; the winning-chances bar is not, because it
  * is what stops the centipawn bar from firing in already-decided positions.
  */
-export const thresholdsFor = (settings: Settings, punishArmed: boolean): Thresholds =>
+export const thresholdsFor = (
+  settings: Settings,
+  punishArmed: boolean,
+  evenWhenDecided = false,
+): Thresholds =>
   punishArmed
-    ? { cp: settings.missedPunishCp, win: MISSED_PUNISH.win }
-    : { cp: settings.ownBlunderCp, win: OWN_BLUNDER.win };
+    ? { cp: settings.missedPunishCp, win: MISSED_PUNISH.win, evenWhenDecided }
+    : { cp: settings.ownBlunderCp, win: OWN_BLUNDER.win, evenWhenDecided };
 
 /**
  * Score `playedUci` against the search that produced `lines`.
@@ -202,6 +218,7 @@ export function isError(verdict: Verdict, thresholds: Thresholds): boolean {
   // Mate, in either direction, is always worth stopping for: seeing mates is the
   // entire reason this app exists. Checked before any suppression rule.
   if (verdict.missesMate || verdict.hangsMate) return true;
+  if (thresholds.evenWhenDecided === true) return verdict.cpLoss >= thresholds.cp;
   if (Math.abs(verdict.best.cp) > DECIDED_CP) return false;
   return verdict.cpLoss >= thresholds.cp && verdict.winLoss >= thresholds.win;
 }

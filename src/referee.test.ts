@@ -12,8 +12,10 @@ import {
   needsVerification,
   scoreOfMove,
   scorePosition,
+  thresholdsFor,
   winPercent,
 } from './referee.ts';
+import { DEFAULT_SETTINGS } from './settings.ts';
 import { type PvLine, mateToCp } from './uci.ts';
 
 /** Build a search result from (move, centipawn) pairs, best first. */
@@ -292,5 +294,45 @@ describe('scorePosition and scoreOfMove', () => {
   it('turns the opponent’s advantage into the mover’s loss', () => {
     const lines: PvLine[] = [{ multipv: 1, cp: 300, mate: undefined, depth: 10, moves: ['e7e5'] }];
     assert.equal(scoreOfMove(lines, INITIAL_FEN).cp, -300);
+  });
+});
+
+describe('judging inside a lost position on purpose', () => {
+  const decided = search(['best', 900], ['played', 900 - OWN_BLUNDER.cp - 50]);
+
+  it('stays quiet by default, because nagging when it is over is noise', () => {
+    const verdict = judge(decided, 'played');
+    assert.ok(verdict);
+    assert.equal(isError(verdict, OWN_BLUNDER), false);
+  });
+
+  it('keeps judging once you have asked to be punished', () => {
+    const verdict = judge(decided, 'played');
+    assert.ok(verdict);
+    assert.ok(verdict.winLoss < OWN_BLUNDER.win, 'the win curve is flat out here');
+    assert.equal(
+      isError(verdict, { ...OWN_BLUNDER, evenWhenDecided: true }),
+      true,
+      'so material has to be what counts, or you fight the refutation in silence',
+    );
+  });
+
+  it('still needs the move to be bad enough', () => {
+    const slight = judge(search(['best', 900], ['played', 890]), 'played');
+    assert.ok(slight);
+    assert.equal(isError(slight, { ...OWN_BLUNDER, evenWhenDecided: true }), false);
+  });
+});
+
+describe('thresholdsFor', () => {
+  it('uses the stricter bar when answering a deliberate error', () => {
+    const settings = { ...DEFAULT_SETTINGS, ownBlunderCp: 110, missedPunishCp: 50 };
+    assert.equal(thresholdsFor(settings, true).cp, 50);
+    assert.equal(thresholdsFor(settings, false).cp, 110);
+  });
+
+  it('passes the punish-mode flag through', () => {
+    assert.equal(thresholdsFor(DEFAULT_SETTINGS, false).evenWhenDecided, false);
+    assert.equal(thresholdsFor(DEFAULT_SETTINGS, false, true).evenWhenDecided, true);
   });
 });
