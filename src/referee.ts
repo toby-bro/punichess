@@ -7,6 +7,7 @@
  * error only when it fails both.
  */
 
+import type { Settings } from './settings.ts';
 import { MATE_CP, type PvLine } from './uci.ts';
 
 /**
@@ -31,6 +32,11 @@ export interface Verdict {
   readonly best: PvLine;
   /** The played line, when it was inside the search's MultiPV window. */
   readonly played?: PvLine | undefined;
+  /**
+   * The forced mate that was available, in moves, when one was and the played
+   * move let it go. This is what turns "that was bad" into "that was mate in 2".
+   */
+  readonly mateIn?: number | undefined;
 }
 
 export interface Thresholds {
@@ -51,6 +57,18 @@ export const OWN_BLUNDER: Thresholds = { cp: 110, win: 8 };
  * noise. Mates bypass this entirely -- see `isError`.
  */
 export const DECIDED_CP = 500;
+
+/**
+ * The thresholds in force for the move about to be judged.
+ *
+ * The centipawn bar is configurable because how much of a slip is worth being
+ * stopped for is a matter of taste; the winning-chances bar is not, because it
+ * is what stops the centipawn bar from firing in already-decided positions.
+ */
+export const thresholdsFor = (settings: Settings, punishArmed: boolean): Thresholds =>
+  punishArmed
+    ? { cp: settings.missedPunishCp, win: MISSED_PUNISH.win }
+    : { cp: settings.ownBlunderCp, win: OWN_BLUNDER.win };
 
 /**
  * Score `playedUci` against the search that produced `lines`.
@@ -79,6 +97,7 @@ export function judge(lines: readonly PvLine[], playedUci: string): Verdict | un
     cpLoss: Math.max(0, best.cp - playedCp),
     winLoss: Math.max(0, winPercent(best.cp) - winPercent(playedCp)),
     missesMate: bestMates && !playedMates,
+    ...(bestMates && !playedMates ? { mateIn: best.mate } : {}),
     // Being mated anyway is not this move's fault.
     hangsMate: playedIsMated && !bestIsMated,
     best,
