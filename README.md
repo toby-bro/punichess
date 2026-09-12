@@ -21,8 +21,10 @@ Two interruptions, armed by different rules:
 | Any other move of yours          | your move loses ≥ 1.1 pawns  | same                                    |
 | Either side, a forced mate is on | mate missed or walked into   | always fires, never suppressed          |
 
-The bot never announces its errors. Spotting them is the entire point. A counter
-tracks how many you caught versus missed.
+The bot never announces its errors. Spotting them is the entire point. Three
+counters keep score: **spotted** (you punished one), **missed** (you let one go),
+and **made** (your own moves that got you stopped, counted once each however many
+times you tried them).
 
 ## It remembers what you got wrong
 

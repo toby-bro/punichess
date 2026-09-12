@@ -280,6 +280,25 @@ button:disabled {
   outline-offset: 2px;
 }
 
+/* The stamp reads as off by default and unmistakably on when it is on: this
+   mode changes how the bot plays, so it should never be a surprise. */
+.stamp {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 4px 10px 4px 6px;
+}
+
+.stamp:has(input:checked) {
+  border-color: var(--alarm);
+  background: rgb(204 51 51 / 0.16);
+  color: #f0b9b9;
+  font-weight: 600;
+}
+
+.stamp:has(input:checked) .track {
+  background: var(--alarm);
+}
+
 /* ---------------------------------------------------------------- settings */
 
 #settings-box {

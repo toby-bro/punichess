@@ -81,6 +81,7 @@ const reviewEl = element('review');
 const pgnText = element('pgn-text') as HTMLTextAreaElement;
 const pgnStatusEl = element('pgn-status');
 const pgnFile = element('pgn-file') as HTMLInputElement;
+const punishToggle = element('punish-toggle') as HTMLInputElement;
 const evaluateBox = element('evaluate-box');
 const evaluateToggle = element('evaluate') as HTMLInputElement;
 const evalBar = element('eval-bar');
@@ -160,6 +161,8 @@ async function main(): Promise<void> {
   let blundersLeft = settings.blundersPerGame;
   let spotted = 0;
   let missed = 0;
+  /** Your own moves that got you stopped, counted once each however often tried. */
+  let made = 0;
   /** Bot errors you have been shown, so the move list can mark them. */
   const revealed = new Set<number>();
   /**
@@ -501,6 +504,9 @@ async function main(): Promise<void> {
     }
 
     const stopped = mode.kind === 'rejected' || analysing;
+    // The stamp follows the mode rather than the other way round, so stepping
+    // out of the branch it was asked for turns it off here too.
+    punishToggle.checked = punishing();
     buttons.reveal.hidden = mode.kind !== 'rejected';
     buttons.punish.hidden = !stopped;
     buttons.ignore.hidden = !stopped;
@@ -520,7 +526,7 @@ async function main(): Promise<void> {
   }
 
   function updateScore(): void {
-    scoreEl.textContent = `spotted ${spotted} · missed ${missed}`;
+    scoreEl.textContent = `spotted ${spotted} · missed ${missed} · made ${made}`;
     const yours = stats.summary('you');
     const theirs = stats.summary('bot');
     acplEl.textContent = yours.moves === 0 ? '' : `you ${yours.acpl} cp · bot ${theirs.acpl} cp`;
@@ -598,6 +604,7 @@ async function main(): Promise<void> {
     blundersLeft = settings.blundersPerGame;
     spotted = 0;
     missed = 0;
+    made = 0;
     mode = { kind: 'play' };
     closeReview();
     moves = mountMoves(element('moves'), tree, { onSelect: goTo, revealed });
@@ -693,6 +700,9 @@ async function main(): Promise<void> {
   /** The interruption: the move comes back, drawn in red, with nothing explained. */
   function stopYou(uci: string, verdict: Verdict): void {
     const previous = mode.kind === 'rejected' ? mode.attempts : [];
+    // Counted per move rather than per try: playing the same wrong move twice is
+    // one mistake made twice, and the memory already counts the repetition.
+    if (!previous.some(attempt => attempt.uci === uci)) made++;
     // Keep every attempt: two wrong tries are two different misunderstandings.
     const attempts = [...previous.filter(attempt => attempt.uci !== uci), { uci, verdict }];
     mode = { kind: 'rejected', attempts };
@@ -954,6 +964,7 @@ async function main(): Promise<void> {
       punishFrom = undefined;
       spotted = 0;
       missed = 0;
+      made = 0;
       mode = { kind: 'play' };
       closeReview();
       moves = mountMoves(element('moves'), tree, { onSelect: goTo, revealed });
@@ -1044,6 +1055,15 @@ async function main(): Promise<void> {
     };
     buttons.swap.onclick = () => {
       void swapSides();
+    };
+    punishToggle.onchange = () => {
+      // Switching it on means "from here", the same as asking to be punished;
+      // switching it off means now, wherever you are.
+      punishFrom = punishToggle.checked ? tree.current.id : undefined;
+      status(
+        punishToggle.checked ? 'Punishing: best moves only from here.' : 'Back to normal play.',
+      );
+      render();
     };
     evaluateToggle.onchange = () => {
       evaluateNew = evaluateToggle.checked;

@@ -45,11 +45,21 @@
       <div id="moves" class="moves" aria-label="Moves played"></div>
 
       <div class="bar">
-        <span id="score">spotted 0 · missed 0</span>
+        <span id="score">spotted 0 · missed 0 · made 0</span>
         <span id="acpl"></span>
       </div>
 
       <div class="controls">
+        <label
+          class="switch stamp"
+          id="punish-box"
+          title="The bot answers with best moves only, from here down this branch"
+        >
+          <input id="punish-toggle" type="checkbox" />
+          <span class="track"></span>
+          Punishing
+        </label>
+        <span class="spacer"></span>
         <button id="swap" type="button" title="Take over the other side, keeping this position">
           Swap sides
         </button>
