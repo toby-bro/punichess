@@ -7,9 +7,9 @@ import type { Dests, Key } from 'chessground/types';
 import { Chess } from 'chessops/chess';
 import { chessgroundDests } from 'chessops/compat';
 import { INITIAL_FEN, makeFen, parseFen } from 'chessops/fen';
-import { makeSan } from 'chessops/san';
+import { makeSan, parseSan } from 'chessops/san';
 import type { Color, Move } from 'chessops/types';
-import { parseUci } from 'chessops/util';
+import { makeUci, parseUci } from 'chessops/util';
 
 export { INITIAL_FEN };
 
@@ -59,6 +59,22 @@ export function sanLine(fen: string, ucis: readonly string[]): string[] {
     pos.play(move);
   }
   return sans;
+}
+
+/**
+ * Convert a move written in SAN to UCI, for reading PGN.
+ *
+ * Returns undefined rather than throwing: a PGN can contain moves that are not
+ * legal in the position, and skipping such a branch beats losing the whole game.
+ */
+export function uciOfSan(fen: string, san: string): string | undefined {
+  try {
+    const pos = position(fen);
+    const move = parseSan(pos, san);
+    return move ? makeUci(move) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Legal destinations per origin square, in the shape chessground wants. */
