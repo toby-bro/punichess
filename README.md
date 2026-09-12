@@ -1,4 +1,4 @@
-# Spot the Blunder
+# Punichess
 
 Play chess against a bot that makes mistakes **on purpose** — and get stopped the
 moment you fail to notice one, while the game is still going, not in a post-mortem

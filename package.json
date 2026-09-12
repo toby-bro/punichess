@@ -1,5 +1,5 @@
 {
-  "name": "spot-the-blunder",
+  "name": "punichess",
   "version": "0.1.0",
   "description": "Play a bot that errs on purpose, and get stopped the moment you miss it.",
   "scripts": {

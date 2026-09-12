@@ -136,7 +136,7 @@ describe('storage', () => {
   });
 
   it('survives corrupt stored data', () => {
-    const storage = fakeStorage({ 'spot-the-blunder.settings': '{not json' });
+    const storage = fakeStorage({ 'punichess.settings': '{not json' });
     assert.deepEqual(loadSettings(storage), DEFAULT_SETTINGS);
   });
 

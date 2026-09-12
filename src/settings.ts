@@ -6,7 +6,7 @@
  */
 
 /** Where settings live in localStorage. */
-const STORAGE_KEY = 'spot-the-blunder.settings';
+const STORAGE_KEY = 'punichess.settings';
 
 import type { Color } from 'chessops/types';
 

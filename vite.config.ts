@@ -23,8 +23,8 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,wasm,svg,png,woff2}'],
       },
       manifest: {
-        name: 'Spot the Blunder',
-        short_name: 'Blunder',
+        name: 'Punichess',
+        short_name: 'Punichess',
         start_url: '.',
         display: 'fullscreen',
         orientation: 'portrait',
