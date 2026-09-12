@@ -329,10 +329,13 @@ async function main(): Promise<void> {
       // Highlight whichever side just moved, not only yours.
       ...(last ? { lastMove: [square(last.uci, 0), square(last.uci, 2)] } : { lastMove: [] }),
       movable: { color: you, dests: canMove() ? legalDests(fen) : noDests() },
-      // Shapes must go in the same call as the fen: chessground clears them
-      // whenever a position is set.
+      // autoShapes, not shapes: the plain kind is the player's own drawing and
+      // chessground wipes it the moment a piece is touched, which took the
+      // remembered mistakes off the board as soon as you reached for a reply.
+      // These also have to travel in the same call as the fen, since setting a
+      // position clears what is drawn on it.
       drawable: {
-        shapes: [
+        autoShapes: [
           ...(mode.kind === 'rejected' ? rejectedShapes(mode.attempts) : []),
           ...rememberedShapes(fen, mode.kind === 'rejected' ? mode.attempts : []),
           ...(reviewing ? bestArrows(fen) : []),
@@ -477,7 +480,7 @@ async function main(): Promise<void> {
       turnColor: turnOf(fen),
       ...(previous ? { lastMove: [square(previous, 0), square(previous, 2)] } : { lastMove: [] }),
       movable: { color: you, dests: noDests() },
-      drawable: { shapes },
+      drawable: { autoShapes: shapes },
     });
   }
 
