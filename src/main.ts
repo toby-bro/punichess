@@ -250,6 +250,24 @@ async function main(): Promise<void> {
     thinking = false;
   }
 
+  /**
+   * Recover from something unexpected.
+   *
+   * Anything thrown mid-move used to escape as an unhandled rejection, leaving
+   * the board locked, the arrows gone and nothing on screen to say why. Whatever
+   * went wrong, the position is still valid and the board should come back.
+   */
+  function fail(error: unknown): void {
+    thinking = false;
+    mode = { kind: 'play' };
+    status(
+      `Something went wrong: ${error instanceof Error ? error.message : String(error)}. The board is yours again.`,
+      true,
+    );
+    render();
+    console.error(error);
+  }
+
   // --------------------------------------------------------------- rendering
 
   function render(): void {
@@ -342,9 +360,13 @@ async function main(): Promise<void> {
     buttons.punish.hidden = !stopped;
     buttons.ignore.hidden = !stopped;
     buttons.resume.hidden = !analysing;
-    // Continuing from an earlier position only makes sense when there is a
-    // continuation to leave behind.
-    buttons.fork.hidden = stopped || tree.atLeaf || thinking;
+    // Offered whenever the position in view needs someone to act on it: there is
+    // a continuation to leave behind, or it is the bot's move and the bot is not
+    // going to make it on its own because the search was interrupted. Without
+    // the second case, stepping back into the bot's turn is a dead end with no
+    // button, no true message and nothing to click.
+    const needsAction = !tree.atLeaf || tree.turn !== you;
+    buttons.fork.hidden = stopped || thinking || !needsAction || Boolean(outcomeOf(tree.fen));
     buttons.review.toggleAttribute('disabled', tree.root.children.length === 0);
   }
 
@@ -365,8 +387,11 @@ async function main(): Promise<void> {
     const over = outcomeOf(tree.fen);
     if (over)
       return over.winner ? `${over.reason} — ${over.winner} wins.` : `Draw: ${over.reason}.`;
-    if (!tree.atLeaf) return 'Browsing. Play a move to branch from here.';
-    return tree.turn === you ? 'Your move.' : 'Thinking…';
+    if (thinking) return 'Thinking…';
+    // Never claim you can move in a position where it is not your turn: that is
+    // the difference between browsing and being stuck.
+    if (tree.turn !== you) return 'Bot to move here — press “Play from here”.';
+    return tree.atLeaf ? 'Your move.' : 'Browsing. Play a move to branch from here.';
   }
 
   /** Put a position on the board, leaving whatever the engine was doing behind. */
@@ -442,7 +467,12 @@ async function main(): Promise<void> {
   }
 
   async function onUserMove(orig: Key, dest: Key): Promise<void> {
-    if (!canMove()) return;
+    if (!canMove()) {
+      // The board let a move through that the game will not accept. Put the
+      // position back rather than leaving a piece somewhere it never went.
+      render();
+      return;
+    }
     const uci = withPromotion(orig, dest);
     const fen = tree.fen;
     thinking = true;
@@ -487,7 +517,7 @@ async function main(): Promise<void> {
       }
       accept(uci);
     } catch (error) {
-      if (!isCancelled(error)) throw error;
+      if (!isCancelled(error)) fail(error);
     }
   }
 
@@ -608,7 +638,7 @@ async function main(): Promise<void> {
       render();
       reviewView?.setSelected(tree.current.id);
     } catch (error) {
-      if (!isCancelled(error)) throw error;
+      if (!isCancelled(error)) fail(error);
     }
   }
 
