@@ -1,0 +1,235 @@
+/**
+ * The game as a tree of variations.
+ *
+ * Going back and playing something else keeps both lines rather than throwing
+ * one away, so a game becomes a record of everything that was tried and any of
+ * it can be replayed.
+ */
+
+import type { Color } from 'chessops/types';
+
+import { INITIAL_FEN, fenAfter, sanOf, turnOf } from './chess.ts';
+
+export interface MoveInfo {
+  readonly uci: string;
+  readonly san: string;
+  readonly by: Color;
+  /** The bot played this one wrong on purpose. */
+  readonly deliberateError: boolean;
+  /**
+   * You were warned about this move and played it anyway. Marked so the move
+   * list can show where to come back to and try again.
+   */
+  playedAnyway: boolean;
+}
+
+export interface TreeNode {
+  readonly id: number;
+  /** The position at this node. */
+  readonly fen: string;
+  /** Distance from the start. The root is 0. */
+  readonly ply: number;
+  /** The move that reached this node. Absent only at the root. */
+  readonly move: MoveInfo | undefined;
+  readonly parent: TreeNode | undefined;
+  /** Continuations, in the order they were first played. */
+  readonly children: TreeNode[];
+}
+
+export interface PlayOptions {
+  readonly deliberateError?: boolean;
+  readonly playedAnyway?: boolean;
+}
+
+export class GameTree {
+  readonly root: TreeNode;
+  readonly #byId = new Map<number, TreeNode>();
+  #current: TreeNode;
+  #nextId = 1;
+
+  constructor(start: string = INITIAL_FEN) {
+    this.root = { id: 0, fen: start, ply: 0, move: undefined, parent: undefined, children: [] };
+    this.#byId.set(0, this.root);
+    this.#current = this.root;
+  }
+
+  get current(): TreeNode {
+    return this.#current;
+  }
+
+  get fen(): string {
+    return this.#current.fen;
+  }
+
+  get turn(): Color {
+    return turnOf(this.#current.fen);
+  }
+
+  /** The move that produced the current position, if any. */
+  get lastMove(): MoveInfo | undefined {
+    return this.#current.move;
+  }
+
+  /** True when there is nothing after the current position on any branch. */
+  get atLeaf(): boolean {
+    return this.#current.children.length === 0;
+  }
+
+  get atStart(): boolean {
+    return this.#current === this.root;
+  }
+
+  /**
+   * True when the move about to be played answers an error the bot made on
+   * purpose, and so should be judged strictly.
+   */
+  get punishArmed(): boolean {
+    return this.#current.move?.deliberateError ?? false;
+  }
+
+  /** Root to current, inclusive. */
+  get path(): TreeNode[] {
+    const nodes: TreeNode[] = [];
+    for (let node: TreeNode | undefined = this.#current; node; node = node.parent) nodes.push(node);
+    return nodes.reverse();
+  }
+
+  /** The moves leading to the current position. */
+  get moves(): MoveInfo[] {
+    return this.path.flatMap(node => (node.move ? [node.move] : []));
+  }
+
+  /** The first line of the tree: root, then the first continuation each time. */
+  get mainline(): TreeNode[] {
+    const nodes: TreeNode[] = [this.root];
+    let node = this.root;
+    while (node.children[0]) {
+      node = node.children[0];
+      nodes.push(node);
+    }
+    return nodes;
+  }
+
+  /** Every node, in the order they were created. */
+  get nodes(): TreeNode[] {
+    return [...this.#byId.values()];
+  }
+
+  node(id: number): TreeNode | undefined {
+    return this.#byId.get(id);
+  }
+
+  /**
+   * Play a move from the current position.
+   *
+   * Replaying a move that has been played from here before follows the existing
+   * branch rather than duplicating it, so wandering back and forth through a
+   * line does not grow the tree.
+   */
+  play(uci: string, options: PlayOptions = {}): TreeNode {
+    const from = this.#current;
+    const existing = from.children.find(child => child.move?.uci === uci);
+    if (existing) {
+      this.#current = existing;
+      return existing;
+    }
+
+    const node: TreeNode = {
+      id: this.#nextId++,
+      fen: fenAfter(from.fen, uci),
+      ply: from.ply + 1,
+      move: {
+        uci,
+        san: sanOf(from.fen, uci),
+        by: turnOf(from.fen),
+        deliberateError: options.deliberateError ?? false,
+        playedAnyway: options.playedAnyway ?? false,
+      },
+      parent: from,
+      children: [],
+    };
+    from.children.push(node);
+    this.#byId.set(node.id, node);
+    this.#current = node;
+    return node;
+  }
+
+  /**
+   * Whether `id` is the given node or sits below it.
+   *
+   * Used to scope a mode to a branch: stepping back above where it started
+   * leaves it behind, which is the only sensible meaning for "punish me from
+   * here".
+   */
+  isWithin(id: number, ancestorId: number): boolean {
+    for (let node = this.#byId.get(id); node; node = node.parent) {
+      if (node.id === ancestorId) return true;
+    }
+    return false;
+  }
+
+  /** Mark the current move as one you were warned about and played regardless. */
+  markPlayedAnyway(): void {
+    if (this.#current.move) this.#current.move.playedAnyway = true;
+  }
+
+  /** Move the viewpoint. Unknown ids are ignored rather than throwing. */
+  goTo(id: number): void {
+    const node = this.#byId.get(id);
+    if (node) this.#current = node;
+  }
+
+  back(): void {
+    if (this.#current.parent) this.#current = this.#current.parent;
+  }
+
+  /** Forward along the branch that was played first from here. */
+  forward(): void {
+    const next = this.#current.children[0];
+    if (next) this.#current = next;
+  }
+
+  first(): void {
+    this.#current = this.root;
+  }
+
+  /** To the end of the current branch. */
+  last(): void {
+    while (this.#current.children[0]) this.#current = this.#current.children[0];
+  }
+
+  /**
+   * Make the current branch the first one at every step back to the root, so it
+   * becomes the line that `mainline` and the forward button follow.
+   */
+  promote(): void {
+    for (let node = this.#current; node.parent; node = node.parent) {
+      const siblings = node.parent.children;
+      const index = siblings.indexOf(node);
+      if (index > 0) {
+        siblings.splice(index, 1);
+        siblings.unshift(node);
+      }
+    }
+  }
+
+  /** Discard a branch and everything below it. The root cannot be removed. */
+  remove(id: number): void {
+    const node = this.#byId.get(id);
+    if (!node?.parent) return;
+
+    const siblings = node.parent.children;
+    const index = siblings.indexOf(node);
+    if (index !== -1) siblings.splice(index, 1);
+
+    // If the viewpoint was inside what just went, fall back to the parent.
+    const doomed = new Set<number>();
+    const visit = (subtree: TreeNode): void => {
+      doomed.add(subtree.id);
+      for (const child of subtree.children) visit(child);
+    };
+    visit(node);
+    for (const id of doomed) this.#byId.delete(id);
+    if (doomed.has(this.#current.id)) this.#current = node.parent;
+  }
+}
