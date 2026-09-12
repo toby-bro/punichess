@@ -7,6 +7,7 @@
  * error only when it fails both.
  */
 
+import { outcomeOf } from './chess.ts';
 import type { Settings } from './settings.ts';
 import { MATE_CP, type PvLine } from './uci.ts';
 
@@ -19,6 +20,58 @@ export const winPercent = (cp: number): number =>
 
 /** Mate scores sit far above any real evaluation; treat them as a separate kind. */
 export const isMateScore = (cp: number): boolean => Math.abs(cp) > MATE_CP - 10_000;
+
+/**
+ * How much slower a mate has to be before taking it counts as missing the fast
+ * one: at least this many moves longer, *and* at least twice as long.
+ *
+ * Mate in 1 played as mate in 4 is still mate and not worth an interruption.
+ * Mate in 2 played as mate in 8 is a different move, and missing the short one
+ * is exactly the kind of blindness this app exists to catch.
+ */
+export const MATE_SLACK = 4;
+
+const muchSlower = (played: number, best: number): boolean =>
+  played - best >= MATE_SLACK && played >= best * 2;
+
+export interface PositionScore {
+  readonly cp: number;
+  readonly mate?: number | undefined;
+}
+
+/**
+ * A position's value from the side to move's point of view.
+ *
+ * A search returns nothing when there are no legal moves, which is not a
+ * failure but the end of the game, so read the result off the position instead.
+ */
+export function scorePosition(lines: readonly PvLine[], fen: string): PositionScore {
+  const [best] = lines;
+  if (best) return { cp: best.cp, mate: best.mate };
+  if (outcomeOf(fen)?.reason === 'checkmate') return { cp: -MATE_CP, mate: -0 };
+  return { cp: 0 };
+}
+
+/** The same score seen from the other side of the board. */
+export const negate = (score: PositionScore): PositionScore => ({
+  cp: -score.cp,
+  mate: score.mate === undefined ? undefined : -score.mate,
+});
+
+/**
+ * What a move was worth, given the search of the position it led to.
+ *
+ * Used when the move played is not among the lines the engine reported, which
+ * is common precisely when the move is bad. The budget must match the parent
+ * search, or the two scores are not comparable.
+ */
+export function scoreOfMove(childLines: readonly PvLine[], childFen: string): PositionScore {
+  // Delivering mate leaves the opponent with nothing to search.
+  if (childLines.length === 0 && outcomeOf(childFen)?.reason === 'checkmate') {
+    return { cp: MATE_CP, mate: 1 };
+  }
+  return negate(scorePosition(childLines, childFen));
+}
 
 export interface Verdict {
   /** Centipawns thrown away versus the best move. Never negative. */
@@ -77,32 +130,71 @@ export const thresholdsFor = (settings: Settings, punishArmed: boolean): Thresho
  * resulting position at a different depth is what makes engines contradict
  * themselves and produce false accusations.
  */
-export function judge(lines: readonly PvLine[], playedUci: string): Verdict | undefined {
+/**
+ * Score `playedUci` against the search that produced `lines`.
+ *
+ * The comparison stays *within one search*: re-searching a child position at a
+ * different depth is what makes engines contradict themselves and produce false
+ * accusations. When the move is not among the reported lines -- which is common
+ * precisely when it is bad -- the caller should pass `playedScore`, obtained by
+ * searching the resulting position on the same budget.
+ */
+export function judge(
+  lines: readonly PvLine[],
+  playedUci: string,
+  playedScore?: PositionScore,
+): Verdict | undefined {
   const [best] = lines;
   const worst = lines.at(-1);
   if (!best || !worst) return undefined;
 
-  const played = lines.find(line => line.moves[0] === playedUci);
-  // The move fell outside the MultiPV window, so it is at least as bad as the
-  // worst line we do have. Attribute exactly that, rather than inventing a
-  // number we cannot justify.
-  const playedCp = played ? played.cp : worst.cp;
+  const listed = lines.find(line => line.moves[0] === playedUci);
+  // Known exactly if the engine listed it or the caller looked it up. Otherwise
+  // it is at least as bad as the worst line we have, which is all we can justify.
+  const known = listed ? { cp: listed.cp, mate: listed.mate } : playedScore;
+  const score: PositionScore = known ?? { cp: worst.cp, mate: worst.mate };
 
-  const bestMates = isMateScore(best.cp) && best.cp > 0;
-  const playedMates = isMateScore(playedCp) && playedCp > 0;
+  const bestMate = isMateScore(best.cp) && best.cp > 0 ? (best.mate ?? 1) : undefined;
+  const playedMate = isMateScore(score.cp) && score.cp > 0 ? (score.mate ?? 1) : undefined;
+
+  // A mate was there and this move either does not mate at all, or mates so much
+  // later that it is a different move. Only claimed when the move's own score is
+  // known: guessing here is how a player gets accused of missing a mate they in
+  // fact played.
+  const missesMate =
+    bestMate !== undefined &&
+    known !== undefined &&
+    (playedMate === undefined || muchSlower(playedMate, bestMate));
+
   const bestIsMated = isMateScore(best.cp) && best.cp < 0;
-  const playedIsMated = isMateScore(playedCp) && playedCp < 0;
+  const playedIsMated = isMateScore(score.cp) && score.cp < 0;
 
   return {
-    cpLoss: Math.max(0, best.cp - playedCp),
-    winLoss: Math.max(0, winPercent(best.cp) - winPercent(playedCp)),
-    missesMate: bestMates && !playedMates,
-    ...(bestMates && !playedMates ? { mateIn: best.mate } : {}),
+    cpLoss: Math.max(0, best.cp - score.cp),
+    winLoss: Math.max(0, winPercent(best.cp) - winPercent(score.cp)),
+    missesMate,
+    ...(missesMate ? { mateIn: bestMate } : {}),
     // Being mated anyway is not this move's fault.
     hangsMate: playedIsMated && !bestIsMated,
     best,
-    played,
+    played: listed,
   };
+}
+
+/**
+ * Whether a verdict is worth confirming with a deeper search before
+ * interrupting.
+ *
+ * Only marginal calls are: a move that loses far more than the bar, or a mate
+ * either way, is not going to be talked out of it by more thinking, and the
+ * pause to double-check is itself a tell that something is wrong.
+ */
+export const VERIFY_MARGIN = 1.8;
+
+export function needsVerification(verdict: Verdict, thresholds: Thresholds): boolean {
+  // Mate scores are proofs, not estimates. Nothing to re-check.
+  if (verdict.missesMate || verdict.hangsMate) return false;
+  return verdict.cpLoss < thresholds.cp * VERIFY_MARGIN;
 }
 
 /** Whether a verdict is bad enough to interrupt the game for. */

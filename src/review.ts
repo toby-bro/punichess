@@ -10,9 +10,9 @@
 
 import type { Color } from 'chessops/types';
 
-import { outcomeOf, sanOf } from './chess.ts';
+import { sanOf } from './chess.ts';
 import type { Ply } from './history.ts';
-import { winPercent } from './referee.ts';
+import { scorePosition, winPercent } from './referee.ts';
 import { type Judgement, type Summary, classify, summarise } from './stats.ts';
 import { MATE_CP, type PvLine } from './uci.ts';
 
@@ -120,17 +120,9 @@ export async function reviewGame(
   };
 }
 
-/**
- * The position's evaluation from the side to move's point of view.
- *
- * A search returns nothing when there are no legal moves, which is not an error
- * but the end of the game, so read the result off the position instead.
- */
-export function scoreOf(lines: readonly PvLine[], fen: string): number {
-  const [best] = lines;
-  if (best) return best.cp;
-  return outcomeOf(fen)?.reason === 'checkmate' ? -MATE_CP : 0;
-}
+/** The position's evaluation from the side to move's point of view. */
+export const scoreOf = (lines: readonly PvLine[], fen: string): number =>
+  scorePosition(lines, fen).cp;
 
 function alternativesOf(lines: readonly PvLine[], fen: string, playedUci: string): Alternative[] {
   return lines.slice(0, ALTERNATIVES).map(line => ({

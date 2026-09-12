@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { INITIAL_FEN } from './chess.ts';
 import {
   DECIDED_CP,
   MISSED_PUNISH,
@@ -8,6 +9,9 @@ import {
   isError,
   isMateScore,
   judge,
+  needsVerification,
+  scoreOfMove,
+  scorePosition,
   winPercent,
 } from './referee.ts';
 import { type PvLine, mateToCp } from './uci.ts';
@@ -165,5 +169,128 @@ describe('isMateScore', () => {
     assert.equal(isMateScore(mateToCp(-30)), true);
     assert.equal(isMateScore(2000), false);
     assert.equal(isMateScore(0), false);
+  });
+});
+
+describe('judging a move the engine did not list', () => {
+  const mateAvailable: PvLine[] = [
+    { multipv: 1, cp: mateToCp(1), mate: 1, depth: 12, moves: ['a1a8'] },
+    { multipv: 2, cp: mateToCp(2), mate: 2, depth: 12, moves: ['a1a7'] },
+  ];
+
+  it('does not claim a missed mate when it cannot see what was played', () => {
+    // Every listed move mates, so the old fallback concluded the player mated
+    // too, and a genuinely missed mate in 1 went unpunished.
+    const verdict = judge(mateAvailable, 'h2h3');
+    assert.ok(verdict);
+    assert.equal(verdict.missesMate, false, 'an unknown move must not be guessed either way');
+  });
+
+  it('flags the missed mate once the move has been looked up', () => {
+    const verdict = judge(mateAvailable, 'h2h3', { cp: 250 });
+    assert.ok(verdict);
+    assert.equal(verdict.missesMate, true);
+    assert.equal(verdict.mateIn, 1);
+    assert.ok(isError(verdict, OWN_BLUNDER));
+  });
+
+  it('accepts a looked-up move that does mate', () => {
+    const verdict = judge(mateAvailable, 'h2h3', { cp: mateToCp(2), mate: 2 });
+    assert.equal(verdict?.missesMate, false);
+  });
+});
+
+describe('mate played slower than it was available', () => {
+  const mateInTwo: PvLine[] = [
+    { multipv: 1, cp: mateToCp(2), mate: 2, depth: 20, moves: ['a1a8'] },
+    { multipv: 2, cp: mateToCp(8), mate: 8, depth: 20, moves: ['a1a7'] },
+  ];
+
+  it('lets a mate that is barely slower through', () => {
+    const lines: PvLine[] = [
+      { multipv: 1, cp: mateToCp(2), mate: 2, depth: 20, moves: ['a1a8'] },
+      { multipv: 2, cp: mateToCp(3), mate: 3, depth: 20, moves: ['a1a7'] },
+    ];
+    assert.equal(judge(lines, 'a1a7')?.missesMate, false, 'mate is still mate');
+  });
+
+  it('needs both a real gap and a doubling before it complains', () => {
+    const oneVsFour: PvLine[] = [
+      { multipv: 1, cp: mateToCp(1), mate: 1, depth: 20, moves: ['a1a8'] },
+      { multipv: 2, cp: mateToCp(4), mate: 4, depth: 20, moves: ['a1a7'] },
+    ];
+    assert.equal(judge(oneVsFour, 'a1a7')?.missesMate, false, 'mate in 4 is still mate');
+
+    const twoVsSix: PvLine[] = [
+      { multipv: 1, cp: mateToCp(2), mate: 2, depth: 20, moves: ['a1a8'] },
+      { multipv: 2, cp: mateToCp(6), mate: 6, depth: 20, moves: ['a1a7'] },
+    ];
+    assert.equal(judge(twoVsSix, 'a1a7')?.missesMate, true, 'three times as long is a miss');
+  });
+
+  it('flags mate in 2 thrown away for mate in 8', () => {
+    const verdict = judge(mateInTwo, 'a1a7');
+    assert.ok(verdict);
+    assert.equal(verdict.missesMate, true);
+    assert.equal(verdict.mateIn, 2);
+    assert.ok(isError(verdict, OWN_BLUNDER), 'and it must interrupt');
+  });
+
+  it('does not flag taking the fastest mate', () => {
+    assert.equal(judge(mateInTwo, 'a1a8')?.missesMate, false);
+  });
+});
+
+describe('needsVerification', () => {
+  const verdictOf = (bestCp: number, playedCp: number) => {
+    const verdict = judge(search(['best', bestCp], ['played', playedCp]), 'played');
+    assert.ok(verdict);
+    return verdict;
+  };
+
+  it('double-checks a marginal call', () => {
+    assert.equal(needsVerification(verdictOf(0, -OWN_BLUNDER.cp - 5), OWN_BLUNDER), true);
+  });
+
+  it('trusts a loss far past the bar', () => {
+    assert.equal(needsVerification(verdictOf(0, -900), OWN_BLUNDER), false);
+  });
+
+  it('never stalls on a mate, which is a proof rather than an estimate', () => {
+    const lines: PvLine[] = [
+      { multipv: 1, cp: mateToCp(1), mate: 1, depth: 12, moves: ['a1a8'] },
+      { multipv: 2, cp: 100, mate: undefined, depth: 12, moves: ['g1f1'] },
+    ];
+    const missed = judge(lines, 'g1f1');
+    assert.ok(missed);
+    assert.equal(needsVerification(missed, OWN_BLUNDER), false);
+  });
+});
+
+describe('scorePosition and scoreOfMove', () => {
+  it('takes the best line when there is one', () => {
+    const lines: PvLine[] = [{ multipv: 1, cp: 42, mate: undefined, depth: 10, moves: ['e2e4'] }];
+    assert.equal(scorePosition(lines, INITIAL_FEN).cp, 42);
+  });
+
+  it('reads checkmate off a position the engine cannot search', () => {
+    const mated = 'rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3';
+    assert.ok(scorePosition([], mated).cp <= mateToCp(-1));
+  });
+
+  it('reads stalemate as level', () => {
+    assert.equal(scorePosition([], '7k/5Q2/6K1/8/8/8/8/8 b - - 0 1').cp, 0);
+  });
+
+  it('scores a move that delivers mate as a win', () => {
+    const mated = 'rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3';
+    const score = scoreOfMove([], mated);
+    assert.ok(score.cp > 0);
+    assert.equal(score.mate, 1);
+  });
+
+  it('turns the opponent’s advantage into the mover’s loss', () => {
+    const lines: PvLine[] = [{ multipv: 1, cp: 300, mate: undefined, depth: 10, moves: ['e7e5'] }];
+    assert.equal(scoreOfMove(lines, INITIAL_FEN).cp, -300);
   });
 });
