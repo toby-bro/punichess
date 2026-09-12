@@ -159,6 +159,12 @@ async function main(): Promise<void> {
    * back above where you asked to be punished and it goes back to normal.
    */
   let punishFrom: number | undefined;
+  /**
+   * The review, once it has been run. Declared here rather than beside the
+   * review code because the game starts before that point is reached, and the
+   * navigation it performs already wants to tell the review where the board is.
+   */
+  let reviewView: ReturnType<typeof renderReview> | undefined;
 
   const board: Api = Chessground(element('board'), {
     fen: INITIAL_FEN,
@@ -444,7 +450,9 @@ async function main(): Promise<void> {
 
     try {
       const lines = await analyse(fen, SEARCH);
-      const thresholds = thresholdsFor(settings, tree.punishArmed);
+      // In punish mode the position is lost by construction, so the "already
+      // decided" silence has to be lifted or nothing you do afterwards is judged.
+      const thresholds = thresholdsFor(settings, tree.punishArmed, punishing());
       // A move the engine did not list has to be looked up, or a mate you missed
       // can be mistaken for one you found.
       const listed = lines.some(line => line.moves[0] === uci);
@@ -564,7 +572,6 @@ async function main(): Promise<void> {
     try {
       const fen = tree.fen;
       const lines = await analyse(fen, SEARCH);
-      const punishing = punishFrom !== undefined && tree.isWithin(tree.current.id, punishFrom);
       const move = await chooseMove(
         {
           search: position => analyse(position, SEARCH),
@@ -574,7 +581,7 @@ async function main(): Promise<void> {
         fen,
         lines,
         // While punishing, the bot plays the best move and nothing else.
-        punishing
+        punishing()
           ? { wantsError: false, acpl: Number.POSITIVE_INFINITY }
           : { wantsError: wantsError(), acpl: stats.acpl('bot') },
       );
@@ -605,6 +612,11 @@ async function main(): Promise<void> {
     }
   }
 
+  /** Whether the bot is currently answering with best moves only. */
+  function punishing(): boolean {
+    return punishFrom !== undefined && tree.isWithin(tree.current.id, punishFrom);
+  }
+
   function wantsError(): boolean {
     if (blundersLeft <= 0 || tree.current.ply < settings.blunderFromPly) return false;
     return Math.random() < settings.blunderChance;
@@ -624,8 +636,6 @@ async function main(): Promise<void> {
   }
 
   // ----------------------------------------------------------------- review
-
-  let reviewView: ReturnType<typeof renderReview> | undefined;
 
   async function runReview(): Promise<void> {
     if (tree.root.children.length === 0) return;
