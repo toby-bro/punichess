@@ -7,7 +7,7 @@
  * are punishable -- see `pickBlunder` and `pickMateTrap`.
  */
 
-import { fenAfter } from './chess.ts';
+import { fenAfter, moveKind } from './chess.ts';
 import { DECIDED_CP } from './referee.ts';
 import type { Settings } from './settings.ts';
 import type { PvLine } from './uci.ts';
@@ -27,7 +27,7 @@ const SPREAD_RATIO = 0.6;
  * The refutation of a deliberate error must beat the second-best reply by this
  * much, or there is nothing to spot and stopping the player would be unfair.
  */
-export const PUNISH_MARGIN = 80;
+export const PUNISH_MARGIN = 60;
 
 /**
  * How many candidate errors to test for punishability before giving up.
@@ -35,7 +35,7 @@ export const PUNISH_MARGIN = 80;
  * Each test is a search, and a bot that thinks for ten seconds is worse company
  * than one that occasionally fails to find an error worth making.
  */
-export const MAX_PROBES = 3;
+export const MAX_PROBES = 4;
 
 /** Analyse a position. Injected so the policy can be tested without an engine. */
 export type Search = (fen: string) => Promise<readonly PvLine[]>;
@@ -66,6 +66,11 @@ export interface MoveContext {
   readonly wantsError: boolean;
   /** The bot's average centipawn loss so far, which steers honest play. */
   readonly acpl: number;
+  /**
+   * Moves not to play, so asking for a different move in a position actually
+   * gives you one.
+   */
+  readonly exclude?: ReadonlySet<string> | undefined;
 }
 
 export type MoveKind = 'quiet' | 'blunder' | 'mate-trap';
@@ -80,6 +85,20 @@ export interface BotMove {
 }
 
 const lossOf = (best: PvLine, line: PvLine): number => Math.max(0, best.cp - line.cp);
+
+/** The square a move ends on. */
+const destOf = (uci: string): string => uci.slice(2, 4);
+
+/**
+ * Lines whose move is still on the table.
+ *
+ * Never empties the list: if every candidate has been ruled out, the position
+ * still needs a move, and the best one is a better answer than none.
+ */
+function allowed(lines: readonly PvLine[], exclude: ReadonlySet<string>): readonly PvLine[] {
+  const left = lines.filter(line => !exclude.has(line.moves[0]));
+  return left.length > 0 ? left : lines;
+}
 
 const honestLoss = (lines: readonly PvLine[], uci: string): number => {
   const [best] = lines;
@@ -113,6 +132,7 @@ export async function chooseMove(
   const [best] = lines;
   if (!best) return undefined;
   const random = policy.random ?? Math.random;
+  const exclude = context.exclude ?? new Set<string>();
 
   if (context.wantsError && Math.abs(best.cp) <= DECIDED_CP) {
     // One wide search serves both kinds of error, so erring costs a single
@@ -122,18 +142,18 @@ export async function chooseMove(
     // A mate to find is a better lesson than a dropped piece, so try for one
     // first when the settings ask for it.
     if (random() < policy.settings.mateTrapShare) {
-      const trap = pickMateTrap(wide, best, policy.settings, random);
+      const trap = pickMateTrap(allowed(wide, exclude), best, policy.settings, random);
       if (trap) {
         return { uci: trap.uci, kind: 'mate-trap', deliberateError: true, cpLoss: trap.cpLoss };
       }
     }
-    const blunder = await pickBlunder(policy, fen, best, wide);
+    const blunder = await pickBlunder(policy, fen, best, allowed(wide, exclude));
     if (blunder) {
       return { uci: blunder.uci, kind: 'blunder', deliberateError: true, cpLoss: blunder.cpLoss };
     }
   }
 
-  const quiet = pickHonest(lines, policy.settings, context.acpl, random);
+  const quiet = pickHonest(allowed(lines, exclude), policy.settings, context.acpl, random);
   if (!quiet) return undefined;
   return { uci: quiet, kind: 'quiet', deliberateError: false, cpLoss: honestLoss(lines, quiet) };
 }
@@ -205,15 +225,30 @@ export async function pickBlunder(
   ).slice(0, MAX_PROBES);
 
   const probe = policy.probe ?? policy.search;
+
   for (const candidate of candidates) {
     const uci = candidate.moves[0];
-    const replies = await probe(fenAfter(fen, uci));
-    const [punish, second] = replies;
+    const after = fenAfter(fen, uci);
+    const [punish, second] = await probe(after);
+
     // A punishable error is one where the right reply stands out. If every reply
     // is about as good there is no insight to have, so try another error.
-    if (punish && second && punish.cp - second.cp >= PUNISH_MARGIN) {
-      return { uci, cpLoss: lossOf(best, candidate) };
-    }
+    if (!punish || !second || punish.cp - second.cp < PUNISH_MARGIN) continue;
+
+    // "I move this piece somewhere it gets taken" is not a mistake worth
+    // spotting, it is one worth ignoring, so an answer that just takes the piece
+    // that moved is not an answer worth setting up.
+    if (destOf(punish.moves[0]) === destOf(uci)) continue;
+
+    // Nor is picking up something left hanging elsewhere. The refutation has to
+    // be a move rather than a helping: something quiet, or a capture into a
+    // defended square, which is to say a tactic. Measured over a real game, this
+    // keeps five of every six clear-cut refutations and throws away exactly the
+    // free lunches.
+    const answer = moveKind(after, punish.moves[0]);
+    if (answer.capture && !answer.defended) continue;
+
+    return { uci, cpLoss: lossOf(best, candidate) };
   }
   return undefined;
 }

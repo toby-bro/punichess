@@ -48,12 +48,15 @@ export const REVIEW: Budget = { multiPV: 3, nodes: 350_000 };
 /**
  * The most the bot may spend choosing one move.
  *
- * One wide search plus the punishability probes. A bot that thinks for ten
- * seconds is worse company than one that occasionally fails to find an error
- * worth making, so this is a bound the code is tested against rather than an
- * aspiration.
+ * One wide search plus the punishability probes. About two seconds at the
+ * measured rate -- which costs nothing in practice, since the bot waits out its
+ * minimum move time anyway, and that defaults to longer than this.
+ *
+ * A bot that thinks for ten seconds is worse company than one that occasionally
+ * fails to find an error worth making, so this is a bound the code is tested
+ * against rather than an aspiration.
  */
-export const MOVE_CEILING_NODES = 800_000;
+export const MOVE_CEILING_NODES = 900_000;
 
 /** Whether a remembered search at `have` answers a request for `want`. */
 export const satisfies = (have: Budget, want: Budget): boolean =>

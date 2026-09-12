@@ -77,6 +77,39 @@ export function uciOfSan(fen: string, san: string): string | undefined {
   }
 }
 
+export interface MoveKind {
+  /** The move takes something. */
+  readonly capture: boolean;
+  /** It gives check. */
+  readonly check: boolean;
+  /**
+   * The square it lands on is defended, so taking there is a trade or a
+   * sacrifice rather than picking up something free.
+   */
+  readonly defended: boolean;
+}
+
+/**
+ * What a move does, in the terms needed to tell a tactic from a free lunch.
+ *
+ * Whether the destination is defended is judged *after* the move, by asking
+ * whether the opponent could take back -- which is the question that actually
+ * matters and costs nothing extra to answer.
+ */
+export function moveKind(fen: string, uci: string): MoveKind {
+  const before = position(fen);
+  const move = legalMove(before, uci);
+  const target = 'to' in move ? move.to : undefined;
+  const capture = target !== undefined && before.board.occupied.has(target);
+
+  const after = position(fen);
+  after.play(move);
+  const defended =
+    target !== undefined && [...after.allDests()].some(([, targets]) => targets.has(target));
+
+  return { capture, check: after.isCheck(), defended };
+}
+
 /** Legal destinations per origin square, in the shape chessground wants. */
 export const legalDests = (fen: string): Dests => chessgroundDests(position(fen));
 

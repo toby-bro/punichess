@@ -58,7 +58,7 @@ describe('search budgets', () => {
   });
 
   it('probes cheaply enough to afford several', () => {
-    assert.ok(PROBE.nodes * MAX_PROBES <= WIDE.nodes * 2);
+    assert.ok(PROBE.nodes * MAX_PROBES <= WIDE.nodes * 3);
     assert.equal(PROBE.multiPV, 2, 'best versus second best is the whole question');
   });
 

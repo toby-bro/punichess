@@ -123,10 +123,59 @@ describe('pickBlunder', () => {
     assert.equal(found.cpLoss, 150);
   });
 
+  it('refuses an error whose only answer is taking the piece that just moved', async () => {
+    // After 1. e4 e5, d4 walks the pawn onto a square the e5 pawn takes. "I put
+    // this where it gets eaten" is not a mistake worth being stopped for.
+    const fen = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
+    const candidates = search(['g1f3', 0], ['d2d4', -150]);
+    const best = candidates[0];
+    assert.ok(best);
+    const found = await pickBlunder(
+      policy({ probe: replying(['e5d4', 400], ['b8c6', 0]) }),
+      fen,
+      best,
+      candidates,
+    );
+    assert.equal(found, undefined);
+  });
+
+  it('refuses an error whose answer is picking up something undefended', async () => {
+    // White's knight on g4 is hanging. Any move at all leaves Qxg4 available,
+    // and taking a free piece is a helping, not a refutation.
+    const fen = '4k3/8/8/7q/6N1/8/4P3/4K3 w - - 0 1';
+    const candidates = search(['e2e3', 0], ['e2e4', -150]);
+    const best = candidates[0];
+    assert.ok(best);
+    const found = await pickBlunder(
+      policy({ probe: replying(['h5g4', 400], ['e8d8', 0]) }),
+      fen,
+      best,
+      candidates,
+    );
+    assert.equal(found, undefined, 'taking a free piece is not worth finding');
+  });
+
+  it('accepts one whose answer is a capture into a defended square', async () => {
+    // Same shape, but the knight is defended by the e2 pawn after Qxf3, so the
+    // reply is a real decision rather than a free lunch.
+    const fen = '4k3/8/8/7q/8/5N2/4P3/4K3 w - - 0 1';
+    const candidates = search(['f3g1', 0], ['e1f1', -150]);
+    const best = candidates[0];
+    assert.ok(best);
+    const found = await pickBlunder(
+      policy({ probe: replying(['h5f3', 400], ['e8d8', 0]) }),
+      fen,
+      best,
+      candidates,
+    );
+    assert.equal(found?.uci, 'e1f1');
+  });
+
   it('refuses an error whose refutation is not clear-cut', async () => {
     assert.ok(best);
     const found = await pickBlunder(
-      policy({ probe: replying(['d7d5', 200], ['b8c6', 130]) }),
+      // Two replies within a quarter-pawn of each other: no single right answer.
+      policy({ probe: replying(['d7d5', 200], ['b8c6', 180]) }),
       INITIAL_FEN,
       best,
       wide,
