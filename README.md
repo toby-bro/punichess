@@ -22,6 +22,37 @@ back. Nothing is explained yet. Ask to be shown and the best move appears in
 Everything runs on the phone: Stockfish 18 compiled to WebAssembly, no server, no
 network after the first load.
 
+## Settings
+
+Everything the bot decides from is a slider, and it is remembered between games.
+Four presets cover the usual ground; _Mate hunt_ is the one that mostly hands you
+forced mates to find.
+
+The important dial is **bot average loss**: the average centipawn loss it aims
+for across its honest moves. That is the strength control. It is a target for the
+_average_, not a cap on any single move, so the bot drifts the way a human does
+rather than playing perfectly until it suddenly does not.
+
+The rest control how often it errs on purpose, how big those errors are, what
+share of them hand you a forced mate instead of material, how long a mate it will
+offer, and how bad one of your own moves has to be before you get stopped.
+
+Your average loss and the bot's are shown as you play.
+
+## Game review
+
+_Review game_ analyses every position and shows:
+
+- an **evaluation graph** across the whole game, with every inaccuracy, mistake
+  and blunder marked and clickable
+- **every move** labelled and costed, next to the **three best moves** that were
+  available in that position
+
+Clicking a move, or a dot on the graph, jumps the board there — where the
+navigation below lets you play on and see how it should have gone.
+
+It runs the engine once per position, so a long game takes a minute or two.
+
 ## Moving around the game
 
 `◀` `▶` step through the moves, `⏮` `⏭` jump to either end, and the arrow, Home
@@ -76,8 +107,13 @@ rebuilds, so without it the container keeps mounting the old dependency tree.
 uci.ts       parse Stockfish's output into scored variations
 engine.ts    drive the WASM worker; one search at a time, fixed node budgets
 chess.ts     rules, FEN/SAN/UCI conversions (wraps chessops)
+history.ts   the moves played, where we are looking, and forking
+settings.ts  every tunable, with clamping and persistence
 referee.ts   decide whether a move was an error, and how bad
-bot.ts       choose the bot's move: honest, or deliberately wrong but punishable
+stats.ts     average centipawn loss and per-move labels
+bot.ts       choose the bot's move: honest at a target average, or wrong on purpose
+review.ts    score a whole game, once per position
+chart.ts     evaluation-graph geometry
 main.ts      the game loop and the board
 ```
 
