@@ -7,6 +7,7 @@ import type { Key } from 'chessground/types';
 import type { Color } from 'chessops/types';
 
 import { type Policy, chooseMove } from './bot.ts';
+import { LOOKUP, PROBE, REVIEW, SEARCH, VERIFY, WIDE } from './budgets.ts';
 import { PositionCache } from './cache.ts';
 import { INITIAL_FEN, fenAfter, legalDests, noDests, outcomeOf, sanLine, turnOf } from './chess.ts';
 import { Engine, isCancelled } from './engine.ts';
@@ -29,18 +30,6 @@ import { Stats } from './stats.ts';
 import { GameTree } from './tree.ts';
 import type { PvLine } from './uci.ts';
 
-/** Budget for move selection and for judging your move. */
-const SEARCH = { multiPV: 8, nodes: 1_000_000 } as const;
-/** A deeper budget, used only when a verdict is too close to call. */
-const VERIFY = { multiPV: 8, nodes: 3_000_000 } as const;
-/**
- * A search over many more candidates, used only when hunting for a move that
- * hands you a forced mate: those are the worst moves in the position and never
- * appear in a narrow search.
- */
-const WIDE = { multiPV: 24, nodes: 700_000 } as const;
-/** Budget for the post-game review, per position. */
-const REVIEW = { multiPV: 3, nodes: 700_000 } as const;
 /** How many moves of the best line the reveal lets you step through. */
 const REVEAL_DEPTH = 8;
 /** How many alternatives to draw on the board during a reveal. */
@@ -241,7 +230,7 @@ async function main(): Promise<void> {
    */
   async function scoreUnlisted(fen: string, uci: string): Promise<ReturnType<typeof scoreOfMove>> {
     const child = fenAfter(fen, uci);
-    return scoreOfMove(await analyse(child, SEARCH), child);
+    return scoreOfMove(await analyse(child, LOOKUP), child);
   }
 
   /** Abandon whatever the engine is doing; the caller is about to change the world. */
@@ -379,8 +368,17 @@ async function main(): Promise<void> {
 
   // -------------------------------------------------------------- navigation
 
+  /**
+   * Being stopped does not take the board away.
+   *
+   * The whole point of the interruption is that you try something else, so a
+   * rejected move leaves the position exactly as it was and you simply play a
+   * different one. Having to press a button first to get the board back made
+   * the correction feel like a punishment rather than a second chance.
+   */
   function canMove(): boolean {
-    return !thinking && mode.kind === 'play' && tree.turn === you && !outcomeOf(tree.fen);
+    if (thinking || mode.kind === 'analysis') return false;
+    return tree.turn === you && !outcomeOf(tree.fen);
   }
 
   function liveStatus(): string {
@@ -606,6 +604,7 @@ async function main(): Promise<void> {
         {
           search: position => analyse(position, SEARCH),
           searchWide: position => analyse(position, WIDE),
+          probe: position => analyse(position, PROBE),
           settings,
         } satisfies Policy,
         fen,
