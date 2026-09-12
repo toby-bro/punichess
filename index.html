@@ -9,7 +9,13 @@
   </head>
   <body>
     <main>
-      <div id="board"></div>
+      <div class="board-row">
+        <div id="board"></div>
+        <div id="eval-bar" hidden>
+          <div id="eval-fill"></div>
+          <span id="eval-text"></span>
+        </div>
+      </div>
 
       <p id="status">Loading…</p>
 
@@ -45,6 +51,16 @@
           Swap sides
         </button>
         <button id="review-run" type="button">Review game</button>
+        <label
+          class="switch"
+          id="evaluate-box"
+          hidden
+          title="Evaluate positions the review has not already seen"
+        >
+          <input id="evaluate" type="checkbox" />
+          <span class="track"></span>
+          Evaluate new positions
+        </label>
         <button id="new-game" type="button">New game</button>
       </div>
 

@@ -41,6 +41,16 @@ export class PositionCache {
     return entry.lines;
   }
 
+  /**
+   * Whatever is remembered for a position, however thorough it was.
+   *
+   * For showing what is known rather than for judging: a display has no standard
+   * to fall short of, so any search beats none.
+   */
+  lines(fen: string): readonly PvLine[] | undefined {
+    return this.#entries.get(fen)?.lines;
+  }
+
   /** The best evaluation known for a position, from the side to move's view. */
   best(fen: string): PvLine | undefined {
     return this.#entries.get(fen)?.lines[0];

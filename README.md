@@ -64,11 +64,19 @@ _Review game_ analyses every position and shows:
 - an **evaluation graph** across the whole game, with every inaccuracy, mistake
   and blunder marked. Click anywhere on it to put that position on the board, and
   moving the board draws a marker back at the matching point
+- an **evaluation bar** beside the board, and the engine's **three best moves**
+  drawn as arrows with their evaluations
 - **every move** labelled and costed, next to the **three best moves** that were
   available in that position
 
 Clicking a move, or a dot on the graph, jumps the board there — where the
 navigation below lets you play on and see how it should have gone.
+
+The bar and the arrows appear **only with the review open**. During a game they
+would answer the question the game is asking you. They also vanish the moment you
+branch into a position the review has not seen, since working a line out for
+yourself is usually the point; the _Evaluate new positions_ switch turns that off
+when you would rather just be told.
 
 Reviewing a game you just played is nearly instant: the engine analysed every
 position while you were playing, and those searches are remembered, so the review

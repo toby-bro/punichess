@@ -41,6 +41,15 @@ describe('PositionCache', () => {
     assert.deepEqual(cache.get('fen', 4_000_000, 8), lines(99));
   });
 
+  it('hands back whatever it has when the question is only what is known', () => {
+    const cache = new PositionCache();
+    cache.set('fen', lines(30), 1000, 1);
+    // Too weak to judge with, but a display has no standard to fall short of.
+    assert.equal(cache.get('fen', 500_000, 8), undefined);
+    assert.deepEqual(cache.lines('fen'), lines(30));
+    assert.equal(cache.lines('unseen'), undefined);
+  });
+
   it('exposes the best line for a quick evaluation', () => {
     const cache = new PositionCache();
     cache.set('fen', lines(42), 1000, 1);

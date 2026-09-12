@@ -22,7 +22,7 @@ import {
   thresholdsFor,
   winPercent,
 } from './referee.ts';
-import { renderReview } from './review-view.ts';
+import { formatEval, renderReview } from './review-view.ts';
 import { reviewGame } from './review.ts';
 import { mountSettings } from './settings-panel.ts';
 import { loadSettings, saveSettings, withColour } from './settings.ts';
@@ -71,6 +71,11 @@ const reviewEl = element('review');
 const pgnText = element('pgn-text') as HTMLTextAreaElement;
 const pgnStatusEl = element('pgn-status');
 const pgnFile = element('pgn-file') as HTMLInputElement;
+const evaluateBox = element('evaluate-box');
+const evaluateToggle = element('evaluate') as HTMLInputElement;
+const evalBar = element('eval-bar');
+const evalFill = element('eval-fill');
+const evalText = element('eval-text');
 
 const buttons = {
   first: element('first'),
@@ -154,6 +159,20 @@ async function main(): Promise<void> {
    * navigation it performs already wants to tell the review where the board is.
    */
   let reviewView: ReturnType<typeof renderReview> | undefined;
+  /**
+   * Whether the review is open, which is the only time the evaluation and the
+   * engine's preferred moves may be shown. During a game they would hand you the
+   * answer to the question the game is asking.
+   */
+  let reviewing = false;
+  /**
+   * Whether to evaluate positions the review has not already seen.
+   *
+   * Off by default: stepping off the reviewed game into a line of your own is
+   * usually you working something out, and answering it unasked spoils that.
+   * On, when you would rather just be told.
+   */
+  let evaluateNew = false;
 
   const board: Api = Chessground(element('board'), {
     fen: INITIAL_FEN,
@@ -277,8 +296,82 @@ async function main(): Promise<void> {
       movable: { color: you, dests: canMove() ? legalDests(fen) : noDests() },
       // Shapes must go in the same call as the fen: chessground clears them
       // whenever a position is set.
-      drawable: { shapes: mode.kind === 'rejected' ? rejectedShapes(mode.attempts) : [] },
+      drawable: {
+        shapes: [
+          ...(mode.kind === 'rejected' ? rejectedShapes(mode.attempts) : []),
+          ...(reviewing ? bestArrows(fen) : []),
+        ],
+      },
     });
+    renderEval(fen);
+  }
+
+  /**
+   * The engine's favourite moves from the position on the board, best first.
+   *
+   * Only ever from what is already known. A position reached by branching off
+   * during the review has not been searched, and searching it would answer a
+   * question you have just started asking yourself -- so it shows nothing at all
+   * rather than spoiling the line you are exploring.
+   */
+  function bestArrows(fen: string): DrawShape[] {
+    const known = cache.lines(fen);
+    if (!known) {
+      if (evaluateNew) evaluateSoon(fen);
+      return [];
+    }
+    return known
+      .slice(0, REVEAL_ARROWS)
+      .map((line, rank) =>
+        arrow(line.moves[0], rank === 0 ? 'green' : 'blue', formatEval(line.cp, line.mate)),
+      );
+  }
+
+  /** Positions already being looked at, so a redraw does not queue the search twice. */
+  const evaluating = new Set<string>();
+
+  /** Search a position for display only, and redraw when it lands. */
+  function evaluateSoon(fen: string): void {
+    if (evaluating.has(fen)) return;
+    evaluating.add(fen);
+    void analyse(fen, REVIEW)
+      .then(() => {
+        if (tree.fen === fen) render();
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        evaluating.delete(fen);
+      });
+  }
+
+  /**
+   * The evaluation bar beside the board.
+   *
+   * Shown only with the review open, and only for a position already searched.
+   * Step off the reviewed game into something new and it goes away, because the
+   * alternative is either a stale number from the wrong position or a fresh one
+   * that answers the question you are in the middle of asking.
+   */
+  function renderEval(fen: string): void {
+    evaluateBox.hidden = !reviewing;
+    const best = reviewing ? cache.best(fen) : undefined;
+    evalBar.hidden = !best;
+    if (!best) {
+      if (reviewing && evaluateNew) evaluateSoon(fen);
+      return;
+    }
+    // Everything here is said from White's point of view, then flipped to match
+    // whichever way the board is facing.
+    const whiteCp = turnOf(fen) === 'white' ? best.cp : -best.cp;
+    const whiteMate =
+      best.mate === undefined ? undefined : turnOf(fen) === 'white' ? best.mate : -best.mate;
+    const whiteShare = winPercent(whiteCp);
+    const share = you === 'white' ? whiteShare : 100 - whiteShare;
+
+    evalFill.style.height = `${share}%`;
+    evalText.textContent = formatEval(whiteCp, whiteMate);
+    // The label sits on the dark part of the bar, wherever that currently is.
+    evalText.classList.toggle('low', share > 60);
   }
 
   /**
@@ -356,7 +449,8 @@ async function main(): Promise<void> {
     // button, no true message and nothing to click.
     const needsAction = !tree.atLeaf || tree.turn !== you;
     buttons.fork.hidden = stopped || thinking || !needsAction || Boolean(outcomeOf(tree.fen));
-    buttons.review.toggleAttribute('disabled', tree.root.children.length === 0);
+    buttons.review.toggleAttribute('disabled', tree.root.children.length === 0 && !reviewing);
+    buttons.review.textContent = reviewing ? 'Close review' : 'Review game';
   }
 
   function updateScore(): void {
@@ -439,9 +533,7 @@ async function main(): Promise<void> {
     spotted = 0;
     missed = 0;
     mode = { kind: 'play' };
-    reviewEl.hidden = true;
-    reviewEl.replaceChildren();
-    reviewView = undefined;
+    closeReview();
     moves = mountMoves(element('moves'), tree, { onSelect: goTo, revealed });
     panel.update(settings);
     updateScore();
@@ -666,6 +758,15 @@ async function main(): Promise<void> {
 
   // ----------------------------------------------------------------- review
 
+  /** Put the review away and stop showing what the engine thinks. */
+  function closeReview(): void {
+    reviewing = false;
+    reviewView = undefined;
+    reviewEl.hidden = true;
+    reviewEl.replaceChildren();
+    render();
+  }
+
   async function runReview(): Promise<void> {
     if (tree.root.children.length === 0) return;
     interrupt();
@@ -694,15 +795,15 @@ async function main(): Promise<void> {
         you,
         rootId: tree.root.id,
         attempts: { you: stats.summary('you'), bot: stats.summary('bot') },
-        onSelect: id => {
-          goTo(id);
-          element('board').scrollIntoView({ behavior: 'smooth', block: 'start' });
-        },
+        // No scrolling: you clicked a point on a graph you were already looking
+        // at, and hauling the page somewhere else is not what you asked for.
+        onSelect: goTo,
       });
+      reviewing = true;
       reviewView.setSelected(tree.current.id);
     } catch (error) {
       if (isCancelled(error)) {
-        reviewEl.hidden = true;
+        closeReview();
         return;
       }
       reviewEl.textContent = `Review failed: ${error instanceof Error ? error.message : String(error)}`;
@@ -746,8 +847,7 @@ async function main(): Promise<void> {
       spotted = 0;
       missed = 0;
       mode = { kind: 'play' };
-      reviewEl.hidden = true;
-      reviewView = undefined;
+      closeReview();
       moves = mountMoves(element('moves'), tree, { onSelect: goTo, revealed });
       updateScore();
       pgnNote(`Loaded ${tree.nodes.length - 1} moves. Play on from anywhere.`);
@@ -834,8 +934,13 @@ async function main(): Promise<void> {
     buttons.swap.onclick = () => {
       void swapSides();
     };
+    evaluateToggle.onchange = () => {
+      evaluateNew = evaluateToggle.checked;
+      render();
+    };
     buttons.review.onclick = () => {
-      void runReview();
+      if (reviewing) closeReview();
+      else void runReview();
     };
     buttons.newGame.onclick = () => {
       void startGame();
