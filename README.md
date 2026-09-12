@@ -15,9 +15,21 @@ Two interruptions, armed by different rules:
 The bot never announces its errors. Spotting them is the entire point. A counter
 tracks how many you caught versus missed.
 
-When it stops you, your move is drawn as a **red arrow** and the position is put
-back. Nothing is explained yet. Ask to be shown and the best move appears in
-**green** beside it, and you can step through the whole variation on the board.
+When it stops you, your move is drawn as a **red arrow labelled with what it
+cost** and the position is put back. Nothing is explained yet. Every attempt you
+make stays on the board, so two wrong tries show as two red arrows.
+
+Three ways out:
+
+- **Show me** — the three best answers drawn on the board, each labelled with
+  what it costs, and the winning line steppable move by move.
+- **Punish me** — play your move and let the bot answer with _best moves only_,
+  so you watch the refutation land instead of being told about it.
+- **Ignore** — play it and carry on as normal.
+
+The last two mark the move red in the move tree, because the reason to play a
+bad move on purpose is to come back later and try again. Punishment is scoped to
+the branch it started on: step back above it and the bot goes back to normal.
 
 Everything runs on the phone: Stockfish 18 compiled to WebAssembly, no server, no
 network after the first load.
@@ -50,14 +62,18 @@ Your average loss and the bot's are shown as you play.
 _Review game_ analyses every position and shows:
 
 - an **evaluation graph** across the whole game, with every inaccuracy, mistake
-  and blunder marked and clickable
+  and blunder marked. Click anywhere on it to put that position on the board, and
+  moving the board draws a marker back at the matching point
 - **every move** labelled and costed, next to the **three best moves** that were
   available in that position
 
 Clicking a move, or a dot on the graph, jumps the board there — where the
 navigation below lets you play on and see how it should have gone.
 
-It runs the engine once per position, so a long game takes a minute or two.
+Reviewing a game you just played is nearly instant: the engine analysed every
+position while you were playing, and those searches are remembered, so the review
+mostly asks for work already done. Only positions it has never seen cost
+anything.
 
 ## Moving around the game
 
@@ -111,9 +127,11 @@ rebuilds, so without it the container keeps mounting the old dependency tree.
 
 ```
 uci.ts       parse Stockfish's output into scored variations
-engine.ts    drive the WASM worker; one search at a time, fixed node budgets
+engine.ts    drive the WASM worker; one search at a time, abortable
+cache.ts     remember searches by position
 chess.ts     rules, FEN/SAN/UCI conversions (wraps chessops)
-history.ts   the moves played, where we are looking, and forking
+tree.ts      the game as a tree of variations
+pgn.ts       read and write that tree as PGN
 settings.ts  every tunable, with clamping and persistence
 referee.ts   decide whether a move was an error, and how bad
 stats.ts     average centipawn loss and per-move labels
@@ -138,6 +156,12 @@ in — and any alarm is re-verified at four times the node budget before it fire
 catastrophic; dropping 1.00 at +7.00 is noise. Scores are converted through
 lichess's win-probability curve, and a move must lose both material _and_ real
 winning chances to count. Mate bypasses this entirely — a missed mate always fires.
+
+**Never guess about a mate.** A move the engine did not list used to be charged
+the worst listed score — and when several moves mate, that fallback is itself a
+mate score, so a missed mate in 1 could be read as a mate you found. An unlisted
+move is now looked up on the same budget as its parent before anything is
+claimed.
 
 **Only make punishable mistakes.** A deliberate error must cost 1–3 pawns _and_
 have a refutation that clearly beats the second-best reply. Otherwise there is
