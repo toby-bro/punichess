@@ -11,13 +11,15 @@ import assert from 'node:assert/strict';
 
 import initEngine from 'stockfish';
 
-import { chooseMove } from '../src/bot.ts';
+import { chooseMove, pickMateTrap } from '../src/bot.ts';
 import { INITIAL_FEN, fenAfter, sanOf } from '../src/chess.ts';
 import { OWN_BLUNDER, isError, isMateScore, judge } from '../src/referee.ts';
+import { DEFAULT_SETTINGS, parseSettings } from '../src/settings.ts';
 import { collectLines } from '../src/uci.ts';
 
 const MULTI_PV = 8;
 const NODES = 400_000;
+const settings = parseSettings({ ...DEFAULT_SETTINGS, maxMateDepth: 3 });
 
 const engine = await initEngine('lite-single');
 const output = [];
@@ -44,15 +46,24 @@ const until = predicate =>
 
 send('uci');
 await until(line => line === 'uciok');
-send(`setoption name MultiPV value ${MULTI_PV}`);
 send('isready');
 await until(line => line === 'readyok');
 
-const analyse = async fen => {
+let currentMultiPV = 0;
+const searchWith = async (fen, multiPV) => {
+  if (multiPV !== currentMultiPV) {
+    send(`setoption name MultiPV value ${multiPV}`);
+    send('isready');
+    await until(line => line === 'readyok');
+    currentMultiPV = multiPV;
+  }
   send(`position fen ${fen}`);
   send(`go nodes ${NODES}`);
   return collectLines(await until(line => line.startsWith('bestmove')));
 };
+
+const analyse = fen => searchWith(fen, MULTI_PV);
+const analyseWide = fen => searchWith(fen, 24);
 
 // 1. The engine really does emit the MultiPV shape the parser expects.
 const opening = await analyse(INITIAL_FEN);
@@ -95,24 +106,67 @@ assert.ok(isError(missed, OWN_BLUNDER), 'and must never be suppressed as "decide
 // 4. The bot's deliberate error is inside the band and really is punishable.
 const midgame = 'r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4';
 const lines = await analyse(midgame);
-const blunder = await chooseMove({ search: analyse }, midgame, lines, true);
+const policy = { search: analyse, searchWide: analyseWide, settings };
+const blunder = await chooseMove(policy, midgame, lines, { wantsError: true, acpl: 0 });
 console.log(`bot chose ${sanOf(midgame, blunder.uci)} (deliberate: ${blunder.deliberateError})`);
 if (blunder.deliberateError) {
   const cost = judge(lines, blunder.uci).cpLoss;
-  assert.ok(cost >= 100 && cost <= 300, `a deliberate error must stay in band, got ${cost}`);
+  if (blunder.kind === 'blunder') {
+    assert.ok(
+      cost >= settings.blunderMin && cost <= settings.blunderMax,
+      `a deliberate error must stay in band, got ${cost}`,
+    );
+  }
 
   const replies = await analyse(fenAfter(midgame, blunder.uci));
-  assert.ok(replies[0].cp - replies[1].cp >= 80, 'and must have a clear refutation');
+  if (blunder.kind === 'blunder') {
+    assert.ok(replies[0].cp - replies[1].cp >= 80, 'and must have a clear refutation');
+  }
   console.log(`  punishment: ${sanOf(fenAfter(midgame, blunder.uci), replies[0].moves[0])}`);
 }
 
 // 5. Honest play never strays outside the quiet band.
-for (let i = 0; i < 5; i++) {
-  const move = await chooseMove({ search: analyse }, midgame, lines, false);
+let honestTotal = 0;
+for (let i = 0; i < 8; i++) {
+  const move = await chooseMove(policy, midgame, lines, {
+    wantsError: false,
+    acpl: honestTotal / 8,
+  });
   const cost = judge(lines, move.uci).cpLoss;
-  assert.ok(cost <= 100, `honest move ${move.uci} cost ${cost}`);
+  assert.ok(cost <= settings.quietBand, `honest move ${move.uci} cost ${cost}`);
+  honestTotal += cost;
 }
-console.log('honest moves stayed inside the quiet band');
+console.log(`honest moves averaged ${(honestTotal / 8).toFixed(0)} cp, band ${settings.quietBand}`);
+
+// 6. A mate trap. After 1. f3 e5 several White moves walk into a forced mate
+//    (2. g4 Qh4#, 2. h3 Qh4+ 3. g3 Qxg3#). Which one gets picked is deliberately
+//    random, so the property to check is that whatever it picks really does hand
+//    over a mate inside the configured depth.
+const trapFen = 'rnbqkbnr/pppp1ppp/8/4p3/8/5P2/PPPPP1PP/RNBQKBNR w KQkq - 0 2';
+const narrow = await analyse(trapFen);
+assert.ok(
+  !narrow.some(line => line.mate !== undefined && line.mate < 0),
+  'a narrow search should never surface a mate-allowing move: they are the worst on the board',
+);
+
+const trap = await pickMateTrap(policy, trapFen, narrow);
+assert.ok(trap, 'the wide search should find a move that allows mate');
+console.log(`mate trap: ${sanOf(trapFen, trap.uci)}`);
+
+// The player must now have a forced mate, and missing it must be flagged.
+const afterTrap = fenAfter(trapFen, trap.uci);
+const mateReplies = await analyse(afterTrap);
+const forced = mateReplies[0].mate;
+assert.ok(
+  forced !== undefined && forced >= 1 && forced <= settings.maxMateDepth,
+  `the trap should leave a mate in 1..${settings.maxMateDepth}, got ${forced}`,
+);
+
+const ignored = judge(mateReplies, mateReplies.at(-1).moves[0]);
+assert.ok(ignored.missesMate, 'missing the mate must be recognised');
+assert.equal(ignored.mateIn, forced, 'and named with the right depth');
+assert.ok(isError(ignored, OWN_BLUNDER), 'and must always interrupt');
+console.log(`  it is mate in ${forced}; missing it reports "mate in ${ignored.mateIn}"`);
 
 console.log('\nall engine checks passed');
 process.exit(0);
