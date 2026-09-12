@@ -16,7 +16,7 @@
     "test:engine": "node scripts/smoke.mjs",
     "check": "npm run lint && npm run typecheck && npm run test"
   },
-  "license": "GPL-3.0",
+  "license": "GPL-3.0-or-later",
   "type": "module",
   "devDependencies": {
     "@eslint/js": "^10.0.1",

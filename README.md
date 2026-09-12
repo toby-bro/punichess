@@ -180,4 +180,10 @@ real positions.
 
 ## Licence
 
-GPL-3.0, because Stockfish is.
+**GPL-3.0-or-later**, and not by choice: Stockfish, chessground and chessops are
+all GPL and all get bundled into the page, which makes the published app a
+combined work. See [NOTICE.md](NOTICE.md) for what that means in practice, and
+for what was and was not taken from lichess (no source code; two formulas).
+
+Running it privately carries no obligation. Publishing it means keeping it GPL
+and offering the source.
