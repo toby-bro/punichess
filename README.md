@@ -5,7 +5,7 @@
 _This is pure AI-slop, I have absolutely no knowledge of typescript, I just wanted this bot to exist and made it with Claude without ever reading one line of code._
 
 This is provided under GPL3 license, as it seems Claude (intelligently) reused GPL3 code.
-The code is provided to comply with the license.
+The code is provided to comply with the license, as it is possible to interact with it from internet.
 
 ## Presentation
 
@@ -72,10 +72,6 @@ The important dial is **bot average loss**: the average centipawn loss it aims
 for across its honest moves. That is the strength control. It is a target for the
 _average_, not a cap on any single move, so the bot drifts the way a human does
 rather than playing perfectly until it suddenly does not.
-
-**Bot takes at least** is a floor on how fast a move comes back, separate from
-how long the search takes. A bot that answers instantly makes you answer
-instantly, and playing fast is how you stop looking. Set it to zero for no wait.
 
 The rest control how often it errs on purpose, how big those errors are, what
 share of them hand you a forced mate instead of material, how long a mate it will
@@ -159,7 +155,7 @@ rebuilds, so without it the container keeps mounting the old dependency tree.
 
 ## How it works
 
-```
+```txt
 uci.ts       parse Stockfish's output into scored variations
 memory.ts    what you got wrong in a position, kept between sessions
 engine.ts    drive the WASM worker; one search at a time, abortable
