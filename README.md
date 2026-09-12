@@ -15,6 +15,19 @@ Two interruptions, armed by different rules:
 The bot never announces its errors. Spotting them is the entire point. A counter
 tracks how many you caught versus missed.
 
+## It remembers what you got wrong
+
+Every move you are stopped for is remembered **against the position it was made
+in**, and kept between sessions. Come back to that position — later in the game,
+next week, in a different game entirely — and your past mistakes are drawn on the
+board in pale red, each labelled with what it cost and how many times you have
+fallen for it.
+
+Pale red for what you have done before, full red for what you are doing now. A
+FEN includes the side to move, so a remembered mistake can only ever resurface in
+the position it actually belongs to. _Forget my mistakes_, under bot settings,
+wipes the record.
+
 When it stops you, your move is drawn as a **red arrow labelled with what it
 cost** and the position is put back. Nothing is explained yet. Every attempt you
 make stays on the board, so two wrong tries show as two red arrows.
@@ -135,6 +148,7 @@ rebuilds, so without it the container keeps mounting the old dependency tree.
 
 ```
 uci.ts       parse Stockfish's output into scored variations
+memory.ts    what you got wrong in a position, kept between sessions
 engine.ts    drive the WASM worker; one search at a time, abortable
 cache.ts     remember searches by position
 chess.ts     rules, FEN/SAN/UCI conversions (wraps chessops)

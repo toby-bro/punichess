@@ -9,8 +9,18 @@ import type { Color } from 'chessops/types';
 import { type Policy, chooseMove } from './bot.ts';
 import { LOOKUP, PROBE, REVIEW, SEARCH, VERIFY, WIDE } from './budgets.ts';
 import { PositionCache } from './cache.ts';
-import { INITIAL_FEN, fenAfter, legalDests, noDests, outcomeOf, sanLine, turnOf } from './chess.ts';
+import {
+  INITIAL_FEN,
+  fenAfter,
+  legalDests,
+  noDests,
+  outcomeOf,
+  sanLine,
+  sanOf,
+  turnOf,
+} from './chess.ts';
 import { Engine, isCancelled } from './engine.ts';
+import { MistakeMemory } from './memory.ts';
 import { mountMoves } from './moves-view.ts';
 import { PgnImportError, fromPgn, pgnDate, toPgn } from './pgn.ts';
 import {
@@ -93,6 +103,7 @@ const buttons = {
   pgnExport: element('pgn-export'),
   pgnImport: element('pgn-import'),
   pgnCopy: element('pgn-copy'),
+  forget: element('forget'),
 };
 
 const other = (colour: Color): Color => (colour === 'white' ? 'black' : 'white');
@@ -135,6 +146,8 @@ async function main(): Promise<void> {
   const engine = new Engine(`${import.meta.env.BASE_URL}engine/stockfish-18-lite-single.js`);
   const cache = new PositionCache();
   const stats = new Stats();
+  /** Positions you have gone wrong in before, kept between sessions. */
+  const memory = new MistakeMemory();
   let settings = loadSettings();
   let tree = new GameTree();
 
@@ -299,6 +312,7 @@ async function main(): Promise<void> {
       drawable: {
         shapes: [
           ...(mode.kind === 'rejected' ? rejectedShapes(mode.attempts) : []),
+          ...rememberedShapes(fen, mode.kind === 'rejected' ? mode.attempts : []),
           ...(reviewing ? bestArrows(fen) : []),
         ],
       },
@@ -385,6 +399,32 @@ async function main(): Promise<void> {
       arrow(attempt.uci, 'red', costLabel(attempt.verdict)),
       { orig: square(attempt.uci, 2), brush: 'red' },
     ]);
+  }
+
+  /**
+   * What you have got wrong here before, in pale red.
+   *
+   * Paler than the move you are being stopped for right now, because the two
+   * mean different things: one is a mistake you are making, the others are
+   * mistakes you have made. Anything you have just tried is left out, since it
+   * is already on the board in full red.
+   */
+  function rememberedShapes(fen: string, current: readonly Attempt[]): DrawShape[] {
+    const showing = new Set(current.map(attempt => attempt.uci));
+    return memory
+      .at(fen)
+      .filter(mistake => !showing.has(mistake.uci))
+      .map(mistake => {
+        const cost = mistake.missesMate
+          ? mistake.mateIn === undefined
+            ? 'mate'
+            : `#${mistake.mateIn}`
+          : `−${(mistake.cpLoss / 100).toFixed(1)}`;
+        // "x3" is the part worth seeing: falling for the same move repeatedly is
+        // a different problem from getting it wrong once.
+        const times = mistake.times > 1 ? ` ×${mistake.times}` : '';
+        return arrow(mistake.uci, 'paleRed', `${cost}${times}`);
+      });
   }
 
   function renderAnalysis(view: Extract<Mode, { kind: 'analysis' }>): void {
@@ -626,6 +666,17 @@ async function main(): Promise<void> {
     // Keep every attempt: two wrong tries are two different misunderstandings.
     const attempts = [...previous.filter(attempt => attempt.uci !== uci), { uci, verdict }];
     mode = { kind: 'rejected', attempts };
+
+    // Remembered against the position, so it comes back the next time you are
+    // here -- next game, or next month.
+    memory.record(tree.fen, {
+      uci,
+      san: sanOf(tree.fen, uci),
+      cpLoss: verdict.cpLoss,
+      missesMate: verdict.missesMate,
+      hangsMate: verdict.hangsMate,
+      mateIn: verdict.mateIn,
+    });
 
     const forced = verdict.missesMate || verdict.hangsMate;
     status(
@@ -948,6 +999,11 @@ async function main(): Promise<void> {
     buttons.pgnExport.onclick = exportPgn;
     buttons.pgnImport.onclick = () => {
       importPgn(pgnText.value);
+    };
+    buttons.forget.onclick = () => {
+      memory.clear();
+      status('Forgotten. Nothing held against you.');
+      render();
     };
     buttons.pgnCopy.onclick = () => {
       pgnText.select();
