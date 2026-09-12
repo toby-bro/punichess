@@ -11,6 +11,10 @@ import { outcomeOf } from './chess.ts';
 import type { Settings } from './settings.ts';
 import { MATE_CP, type PvLine } from './uci.ts';
 
+function clamp(value: number, low: number, high: number): number {
+  return Math.max(low, Math.min(high, value));
+}
+
 /**
  * Lichess's fitted centipawn -> expected-score curve. Clamped because the curve
  * is flat past a few pawns and mate scores would otherwise dominate it.
@@ -222,6 +226,3 @@ export function isError(verdict: Verdict, thresholds: Thresholds): boolean {
   if (Math.abs(verdict.best.cp) > DECIDED_CP) return false;
   return verdict.cpLoss >= thresholds.cp && verdict.winLoss >= thresholds.win;
 }
-
-const clamp = (value: number, low: number, high: number): number =>
-  Math.max(low, Math.min(high, value));

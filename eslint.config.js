@@ -26,6 +26,14 @@ export default tseslint.config(
       '@typescript-eslint/no-misused-promises': 'error',
       '@typescript-eslint/switch-exhaustiveness-check': 'error',
       '@typescript-eslint/consistent-type-imports': ['error', { fixStyle: 'inline-type-imports' }],
+      // Function declarations hoist and are used before their definition all
+      // over the game loop, which is fine. Variables do not, and reading one
+      // during setup that is declared further down throws at runtime -- twice
+      // now. The compiler cannot see it; this can.
+      '@typescript-eslint/no-use-before-define': [
+        'error',
+        { functions: false, classes: true, variables: true, typedefs: false },
+      ],
       'no-console': ['error', { allow: ['warn', 'error'] }],
       eqeqeq: ['error', 'always'],
       'prefer-const': 'error',

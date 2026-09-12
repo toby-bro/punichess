@@ -81,6 +81,18 @@ export interface BotMove {
 
 const lossOf = (best: PvLine, line: PvLine): number => Math.max(0, best.cp - line.cp);
 
+const honestLoss = (lines: readonly PvLine[], uci: string): number => {
+  const [best] = lines;
+  const played = lines.find(line => line.moves[0] === uci);
+  return best && played ? lossOf(best, played) : 0;
+};
+
+const shuffle = <T>(items: readonly T[], random: () => number): T[] =>
+  items
+    .map(item => ({ item, order: random() }))
+    .sort((a, b) => a.order - b.order)
+    .map(entry => entry.item);
+
 /**
  * The loss to aim for on this move so the running average approaches the target.
  *
@@ -125,12 +137,6 @@ export async function chooseMove(
   if (!quiet) return undefined;
   return { uci: quiet, kind: 'quiet', deliberateError: false, cpLoss: honestLoss(lines, quiet) };
 }
-
-const honestLoss = (lines: readonly PvLine[], uci: string): number => {
-  const [best] = lines;
-  const played = lines.find(line => line.moves[0] === uci);
-  return best && played ? lossOf(best, played) : 0;
-};
 
 /**
  * Pick an honest move, biased towards the loss that keeps the average on target.
@@ -233,9 +239,3 @@ export function pickMateTrap(
   const chosen = shuffle(traps, random)[0];
   return chosen ? { uci: chosen.moves[0], cpLoss: lossOf(best, chosen) } : undefined;
 }
-
-const shuffle = <T>(items: readonly T[], random: () => number): T[] =>
-  items
-    .map(item => ({ item, order: random() }))
-    .sort((a, b) => a.order - b.order)
-    .map(entry => entry.item);

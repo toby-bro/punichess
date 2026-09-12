@@ -31,6 +31,15 @@ const FIELDS: readonly Field[] = [
     format: cp => `${cp} cp`,
   },
   {
+    key: 'minMoveMs',
+    label: 'Bot takes at least',
+    help: 'A floor on how fast a move comes back. Answering instantly makes you answer instantly.',
+    min: 0,
+    max: 10_000,
+    step: 250,
+    format: ms => (ms === 0 ? 'no wait' : `${(ms / 1000).toFixed(2)}s`),
+  },
+  {
     key: 'quietBand',
     label: 'Bot worst ordinary move',
     help: 'No honest move costs more than this, whatever the average.',
@@ -126,6 +135,19 @@ export function mountSettings(
   root.replaceChildren();
   let current = initial;
 
+  const readouts = new Map<NumericSetting, HTMLElement>();
+  const inputs = new Map<NumericSetting, HTMLInputElement>();
+
+  /** Redraw every field: clamping one value can move a neighbour too. */
+  function update(settings: Settings): void {
+    current = settings;
+    for (const field of FIELDS) {
+      readouts.get(field.key)?.replaceChildren(field.format(settings[field.key]));
+      const input = inputs.get(field.key);
+      if (input) input.value = String(settings[field.key]);
+    }
+  }
+
   const presets = document.createElement('div');
   presets.className = 'presets';
   for (const preset of PRESETS) {
@@ -135,15 +157,12 @@ export function mountSettings(
     button.title = preset.description;
     button.onclick = () => {
       current = { ...current, ...preset.settings };
-      panel.update(current);
+      update(current);
       onChange(current);
     };
     presets.append(button);
   }
   root.append(presets);
-
-  const readouts = new Map<NumericSetting, HTMLElement>();
-  const inputs = new Map<NumericSetting, HTMLInputElement>();
 
   for (const field of FIELDS) {
     const row = document.createElement('label');
@@ -164,8 +183,7 @@ export function mountSettings(
     input.step = String(field.step);
     input.oninput = () => {
       current = withSetting(current, field.key, Number(input.value));
-      // Show every field, since clamping can move a neighbour too.
-      panel.update(current);
+      update(current);
       onChange(current);
     };
 
@@ -175,18 +193,6 @@ export function mountSettings(
     inputs.set(field.key, input);
   }
 
-  const panel: SettingsPanel = {
-    update(settings) {
-      current = settings;
-      for (const field of FIELDS) {
-        const readout = readouts.get(field.key);
-        const input = inputs.get(field.key);
-        if (readout) readout.textContent = field.format(settings[field.key]);
-        if (input) input.value = String(settings[field.key]);
-      }
-    },
-  };
-
-  panel.update(initial);
-  return panel;
+  update(initial);
+  return { update };
 }

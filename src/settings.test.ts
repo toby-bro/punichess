@@ -95,6 +95,21 @@ describe('playAs', () => {
   });
 });
 
+describe('minMoveMs', () => {
+  it('makes the bot pause by default, since answering instantly hurries you', () => {
+    assert.ok(DEFAULT_SETTINGS.minMoveMs > 0);
+  });
+
+  it('can be turned off entirely', () => {
+    assert.equal(withSetting(DEFAULT_SETTINGS, 'minMoveMs', 0).minMoveMs, 0);
+  });
+
+  it('is clamped to something survivable', () => {
+    assert.equal(withSetting(DEFAULT_SETTINGS, 'minMoveMs', -500).minMoveMs, 0);
+    assert.equal(withSetting(DEFAULT_SETTINGS, 'minMoveMs', 10 ** 9).minMoveMs, 10_000);
+  });
+});
+
 describe('withSetting', () => {
   it('changes one field and leaves the rest alone', () => {
     const changed = withSetting(DEFAULT_SETTINGS, 'targetAcpl', 60);

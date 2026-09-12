@@ -55,6 +55,11 @@ export interface Review {
 
 export type Analyse = (fen: string) => Promise<readonly PvLine[]>;
 
+/** The position's evaluation from the side to move's point of view. */
+export function scoreOf(lines: readonly PvLine[], fen: string): number {
+  return scorePosition(lines, fen).cp;
+}
+
 export interface ReviewProgress {
   readonly done: number;
   readonly total: number;
@@ -123,10 +128,6 @@ export async function reviewGame(
     black: summarise(entries.filter(entry => entry.by === 'black')),
   };
 }
-
-/** The position's evaluation from the side to move's point of view. */
-export const scoreOf = (lines: readonly PvLine[], fen: string): number =>
-  scorePosition(lines, fen).cp;
 
 function alternativesOf(lines: readonly PvLine[], fen: string, playedUci: string): Alternative[] {
   return lines.slice(0, ALTERNATIVES).map(line => ({

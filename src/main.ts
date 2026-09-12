@@ -186,6 +186,27 @@ async function main(): Promise<void> {
    * On, when you would rather just be told.
    */
   let evaluateNew = false;
+  /**
+   * Bumped whenever the world changes under a move in progress.
+   *
+   * Aborting a search is not enough on its own: the bot also waits out its
+   * minimum move time, and a plain timer knows nothing about being cancelled.
+   * Work started under an older generation checks this and gives up.
+   */
+  let generation = 0;
+  /** Searches running right now, so the same position is never searched twice at once. */
+  const inFlight = new Map<string, Promise<readonly PvLine[]>>();
+  /** Positions being looked at for display, so a redraw does not queue one twice. */
+  const evaluating = new Set<string>();
+
+  const sleep = (ms: number): Promise<void> =>
+    new Promise(resolve => setTimeout(resolve, Math.max(0, ms)));
+
+  // Everything the game reads lives above this line. Setting up runs below it
+  // and calls into the functions further down, so any state declared after this
+  // point is read before it exists -- a temporal dead zone the compiler cannot
+  // see, because the order that matters is the order things are *called* in,
+  // not the order they are written in.
 
   const board: Api = Chessground(element('board'), {
     fen: INITIAL_FEN,
@@ -196,6 +217,8 @@ async function main(): Promise<void> {
       dests: noDests(),
       events: { after: (orig, dest) => void onUserMove(orig, dest) },
     },
+    // Moving while the bot thinks queues the move rather than doing nothing.
+    premovable: { enabled: true, showDests: true },
     animation: { duration: 200 },
     draggable: { showGhost: true },
     drawable: { enabled: true },
@@ -215,9 +238,6 @@ async function main(): Promise<void> {
   await startGame();
 
   // --------------------------------------------------------------- searching
-
-  /** Searches running right now, so the same position is never searched twice at once. */
-  const inFlight = new Map<string, Promise<readonly PvLine[]>>();
 
   /**
    * Search a position, reusing anything already known about it.
@@ -267,7 +287,9 @@ async function main(): Promise<void> {
 
   /** Abandon whatever the engine is doing; the caller is about to change the world. */
   function interrupt(): void {
+    generation++;
     engine.abort();
+    board.cancelPremove();
     thinking = false;
   }
 
@@ -340,9 +362,6 @@ async function main(): Promise<void> {
         arrow(line.moves[0], rank === 0 ? 'green' : 'blue', formatEval(line.cp, line.mate)),
       );
   }
-
-  /** Positions already being looked at, so a redraw does not queue the search twice. */
-  const evaluating = new Set<string>();
 
   /** Search a position for display only, and redraw when it lands. */
   function evaluateSoon(fen: string): void {
@@ -590,6 +609,7 @@ async function main(): Promise<void> {
       if (!outcomeOf(tree.fen)) warm(tree.fen);
       status(liveStatus());
       render();
+      board.playPremove();
       return;
     }
     render();
@@ -740,6 +760,8 @@ async function main(): Promise<void> {
       return;
     }
 
+    const mine = generation;
+    const startedAt = Date.now();
     try {
       const fen = tree.fen;
       const lines = await analyse(fen, SEARCH);
@@ -771,6 +793,11 @@ async function main(): Promise<void> {
         move.cpLoss,
         best ? Math.max(0, winPercent(best.cp) - winPercent(best.cp - move.cpLoss)) : 0,
       );
+      // Hold the move back until the bot has taken as long as it is meant to.
+      // A search that ran quickly should not make the reply arrive quickly.
+      await sleep(settings.minMoveMs - (Date.now() - startedAt));
+      if (mine !== generation) return;
+
       // Say nothing about it. Spotting it is the whole point.
       tree.play(move.uci, { deliberateError: move.deliberateError });
       thinking = false;
@@ -779,6 +806,8 @@ async function main(): Promise<void> {
       status(liveStatus());
       render();
       reviewView?.setSelected(tree.current.id);
+      // Whatever you lined up while it was thinking, play it now.
+      board.playPremove();
     } catch (error) {
       if (!isCancelled(error)) fail(error);
     }

@@ -119,6 +119,7 @@ export class Engine {
 
   /** Send `command` and gather output lines until `done` matches. */
   #collect(command: string, done: (line: string) => boolean): Promise<string[]> {
+    const listeners = this.#listeners;
     return new Promise((resolve, reject) => {
       const output: string[] = [];
       const timer = setTimeout(() => {
@@ -126,20 +127,22 @@ export class Engine {
         reject(new Error(`engine did not answer "${command}" within ${TIMEOUT_MS}ms`));
       }, TIMEOUT_MS);
 
-      const finish = (): void => {
+      // Declarations rather than consts: the two refer to each other, and
+      // hoisting is what makes that safe rather than merely lucky.
+      function finish(): void {
         clearTimeout(timer);
-        this.#listeners.delete(listener);
-      };
+        listeners.delete(listener);
+      }
 
-      const listener = (line: string): void => {
+      function listener(line: string): void {
         output.push(line);
         if (done(line)) {
           finish();
           resolve(output);
         }
-      };
+      }
 
-      this.#listeners.add(listener);
+      listeners.add(listener);
       this.#send(command);
     });
   }

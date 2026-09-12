@@ -7,6 +7,13 @@
 
 import { winPercent } from './referee.ts';
 
+/** Two decimals is plenty for a path coordinate, and keeps the markup small. */
+function round(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+const yOf = (cp: number, height: number): number => height * (1 - winPercent(cp) / 100);
+
 export interface Point {
   readonly x: number;
   readonly y: number;
@@ -31,8 +38,6 @@ export function chartPoints(evals: readonly number[], width: number, height: num
   return evals.map((cp, index) => ({ x: index * step, y: yOf(cp, height) }));
 }
 
-const yOf = (cp: number, height: number): number => height * (1 - winPercent(cp) / 100);
-
 /** An open polyline through the points. */
 export const linePath = (points: readonly Point[]): string =>
   points
@@ -47,5 +52,3 @@ export function areaPath(points: readonly Point[], height: number): string {
   const middle = round(height / 2);
   return `M${round(first.x)} ${middle} ${linePath(points).slice(1)} L${round(last.x)} ${middle} Z`;
 }
-
-const round = (value: number): number => Math.round(value * 100) / 100;

@@ -42,6 +42,14 @@ export interface Settings {
   readonly ownBlunderCp: number;
   /** Centipawn loss at which failing to punish gets you stopped. */
   readonly missedPunishCp: number;
+  /**
+   * The least time the bot will take over a move, in milliseconds.
+   *
+   * Not thinking time -- the search takes what it takes. This is a floor on how
+   * quickly a move comes back, because a bot that answers instantly makes you
+   * answer instantly, and playing fast is how you stop looking.
+   */
+  readonly minMoveMs: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -57,6 +65,7 @@ export const DEFAULT_SETTINGS: Settings = {
   maxMateDepth: 3,
   ownBlunderCp: 110,
   missedPunishCp: 50,
+  minMoveMs: 2000,
 };
 
 /** Bounds for each field, used to clamp both stored and user-entered values. */
@@ -72,6 +81,7 @@ const LIMITS = {
   maxMateDepth: [1, 5],
   ownBlunderCp: [20, 500],
   missedPunishCp: [10, 400],
+  minMoveMs: [0, 10_000],
 } as const satisfies Record<NumericSetting, readonly [number, number]>;
 
 /** Ready-made strength levels, in terms people can reason about. */
