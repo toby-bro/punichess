@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { INITIAL_FEN } from './chess.ts';
-import { History } from './history.ts';
+import { GameTree } from './tree.ts';
 import { type Analyse, reviewGame, scoreOf } from './review.ts';
 import { type PvLine, mateToCp } from './uci.ts';
 
@@ -14,8 +14,8 @@ const MOVES = [
   ['b8c6', 'g8f6', 'd7d6'],
 ];
 
-const game = (): History => {
-  const history = new History();
+const game = (): GameTree => {
+  const history = new GameTree();
   history.play('e2e4');
   history.play('e7e5');
   history.play('g1f3');
@@ -26,8 +26,8 @@ const game = (): History => {
  * An engine stub: `scores[i]` is the best score at position i, from the point of
  * view of whoever is to move there.
  */
-const stub = (history: History, scores: readonly number[]): Analyse => {
-  const positions = [INITIAL_FEN, ...history.plies.map(ply => ply.fen)];
+const stub = (history: GameTree, scores: readonly number[]): Analyse => {
+  const positions = history.mainline.map(node => node.fen);
   return fen => {
     const index = positions.indexOf(fen);
     const best = scores[index] ?? 0;
@@ -45,7 +45,11 @@ const stub = (history: History, scores: readonly number[]): Analyse => {
 describe('reviewGame', () => {
   it('scores every move of the game', async () => {
     const history = game();
-    const review = await reviewGame(INITIAL_FEN, history.plies, stub(history, [30, -30, 30, -30]));
+    const review = await reviewGame(
+      INITIAL_FEN,
+      history.mainline,
+      stub(history, [30, -30, 30, -30]),
+    );
     assert.equal(review.moves.length, 3);
     assert.deepEqual(
       review.moves.map(move => move.san),
@@ -61,13 +65,17 @@ describe('reviewGame', () => {
     const history = game();
     // White to move sees +0.30; after e4, Black to move sees +0.50, meaning
     // White stands at -0.50. e4 therefore cost 0.80.
-    const review = await reviewGame(INITIAL_FEN, history.plies, stub(history, [30, 50, 0, 0]));
+    const review = await reviewGame(INITIAL_FEN, history.mainline, stub(history, [30, 50, 0, 0]));
     assert.equal(review.moves[0]?.cpLoss, 80);
   });
 
   it('charges nothing when the evaluation is unchanged', async () => {
     const history = game();
-    const review = await reviewGame(INITIAL_FEN, history.plies, stub(history, [30, -30, 30, -30]));
+    const review = await reviewGame(
+      INITIAL_FEN,
+      history.mainline,
+      stub(history, [30, -30, 30, -30]),
+    );
     const [first] = review.moves;
     assert.ok(first);
     assert.equal(first.cpLoss, 0);
@@ -76,7 +84,11 @@ describe('reviewGame', () => {
 
   it('reports the evaluation from White’s point of view throughout', async () => {
     const history = game();
-    const review = await reviewGame(INITIAL_FEN, history.plies, stub(history, [30, -80, 30, -80]));
+    const review = await reviewGame(
+      INITIAL_FEN,
+      history.mainline,
+      stub(history, [30, -80, 30, -80]),
+    );
     const [first, second] = review.moves;
     assert.ok(first && second);
     // After e4 Black sees -0.80, so White stands at +0.80.
@@ -87,14 +99,22 @@ describe('reviewGame', () => {
 
   it('starts the evaluation series level and covers every position', async () => {
     const history = game();
-    const review = await reviewGame(INITIAL_FEN, history.plies, stub(history, [30, -30, 30, -30]));
-    assert.equal(review.evals.length, history.plies.length + 1);
+    const review = await reviewGame(
+      INITIAL_FEN,
+      history.mainline,
+      stub(history, [30, -30, 30, -30]),
+    );
+    assert.equal(review.evals.length, history.mainline.length);
     assert.equal(review.evals[0], 0);
   });
 
   it('keeps the top alternatives and marks the move actually played', async () => {
     const history = game();
-    const review = await reviewGame(INITIAL_FEN, history.plies, stub(history, [30, -30, 30, -30]));
+    const review = await reviewGame(
+      INITIAL_FEN,
+      history.mainline,
+      stub(history, [30, -30, 30, -30]),
+    );
     const first = review.moves[0];
     assert.ok(first);
     assert.equal(first.alternatives.length, 3);
@@ -108,7 +128,7 @@ describe('reviewGame', () => {
 
   it('summarises each side separately', async () => {
     const history = game();
-    const review = await reviewGame(INITIAL_FEN, history.plies, stub(history, [30, 50, 0, 0]));
+    const review = await reviewGame(INITIAL_FEN, history.mainline, stub(history, [30, 50, 0, 0]));
     assert.equal(review.white.moves, 2);
     assert.equal(review.black.moves, 1);
     assert.ok(review.white.acpl >= 0);
@@ -117,7 +137,7 @@ describe('reviewGame', () => {
   it('reports progress for every position', async () => {
     const history = game();
     const seen: number[] = [];
-    await reviewGame(INITIAL_FEN, history.plies, stub(history, [0, 0, 0, 0]), progress => {
+    await reviewGame(INITIAL_FEN, history.mainline, stub(history, [0, 0, 0, 0]), progress => {
       seen.push(progress.done);
       assert.equal(progress.total, 4);
     });
@@ -125,7 +145,7 @@ describe('reviewGame', () => {
   });
 
   it('handles a game with no moves', async () => {
-    const review = await reviewGame(INITIAL_FEN, [], stub(new History(), [0]));
+    const review = await reviewGame(INITIAL_FEN, [], stub(new GameTree(), [0]));
     assert.deepEqual(review.moves, []);
     assert.equal(review.white.moves, 0);
   });

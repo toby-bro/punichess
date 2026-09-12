@@ -11,7 +11,7 @@
 import type { Color } from 'chessops/types';
 
 import { sanOf } from './chess.ts';
-import type { Ply } from './history.ts';
+import type { TreeNode } from './tree.ts';
 import { scorePosition, winPercent } from './referee.ts';
 import { type Judgement, type Summary, classify, summarise } from './stats.ts';
 import { MATE_CP, type PvLine } from './uci.ts';
@@ -29,6 +29,8 @@ export interface Alternative {
 }
 
 export interface ReviewedMove {
+  /** The node this move reaches, so clicking a row can put it on the board. */
+  readonly nodeId: number;
   /** 1-based move number in plies. */
   readonly ply: number;
   readonly by: Color;
@@ -66,11 +68,12 @@ export interface ReviewProgress {
  */
 export async function reviewGame(
   start: string,
-  plies: readonly Ply[],
+  line: readonly TreeNode[],
   analyse: Analyse,
   onProgress?: (progress: ReviewProgress) => void,
 ): Promise<Review> {
-  const positions = [start, ...plies.map(ply => ply.fen)];
+  const plies = line.flatMap(node => (node.move ? [{ node, move: node.move }] : []));
+  const positions = [start, ...plies.map(entry => entry.node.fen)];
   const searches: (readonly PvLine[])[] = [];
 
   for (const [index, fen] of positions.entries()) {
@@ -79,7 +82,7 @@ export async function reviewGame(
   }
 
   const moves: ReviewedMove[] = [];
-  for (const [index, ply] of plies.entries()) {
+  for (const [index, { node, move }] of plies.entries()) {
     const before = positions[index];
     const after = positions[index + 1];
     const search = searches[index];
@@ -93,15 +96,16 @@ export async function reviewGame(
     const winLoss = Math.max(0, winPercent(bestScore) - winPercent(playedScore));
 
     moves.push({
+      nodeId: node.id,
       ply: index + 1,
-      by: ply.by,
-      uci: ply.uci,
-      san: ply.san,
+      by: move.by,
+      uci: move.uci,
+      san: move.san,
       cpLoss,
       winLoss,
       judgement: classify(cpLoss, winLoss),
-      evalAfter: ply.by === 'white' ? playedScore : -playedScore,
-      alternatives: alternativesOf(search, before, ply.uci),
+      evalAfter: move.by === 'white' ? playedScore : -playedScore,
+      alternatives: alternativesOf(search, before, move.uci),
     });
   }
 

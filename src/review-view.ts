@@ -1,6 +1,9 @@
 /**
  * The post-game review: an evaluation graph and every move with the
  * alternatives that were available.
+ *
+ * The graph and the move list are two views of the same thing, so selecting in
+ * either drives the other and the board.
  */
 
 import type { Color } from 'chessops/types';
@@ -27,31 +30,68 @@ export function formatEval(cp: number, mate?: number): string {
   return `${cp > 0 ? '+' : ''}${(cp / 100).toFixed(2)}`;
 }
 
+export interface ReviewOptions {
+  readonly you: Color;
+  /** The node id of the starting position, for selecting the left edge. */
+  readonly rootId: number;
+  readonly onSelect: (nodeId: number) => void;
+  /**
+   * Accuracy counting every move submitted, retries included. Shown alongside
+   * the figure for the final line, which quietly forgets what was taken back.
+   */
+  readonly attempts?: { readonly you: Summary; readonly bot: Summary } | undefined;
+}
+
+export interface ReviewView {
+  /** Follow the board: mark the position now being looked at. */
+  setSelected(nodeId: number): void;
+}
+
 export function renderReview(
   root: HTMLElement,
   review: Review,
-  you: Color,
-  onSelect: (ply: number) => void,
-): void {
+  options: ReviewOptions,
+): ReviewView {
   root.replaceChildren();
-  root.append(summaryTable(review, you), chart(review, onSelect), moveList(review, onSelect));
+
+  const graph = chart(review, options);
+  const rows = new Map<number, HTMLElement>();
+  const list = document.createElement('div');
+  list.className = 'review-moves';
+  for (const move of review.moves) {
+    const row = moveRow(move, options.onSelect);
+    rows.set(move.nodeId, row);
+    list.append(row);
+  }
+
+  root.append(summaryTable(review, options), graph.element, list);
+
+  return {
+    setSelected(nodeId) {
+      for (const [id, row] of rows) row.classList.toggle('selected', id === nodeId);
+      const index =
+        nodeId === options.rootId ? 0 : review.moves.findIndex(move => move.nodeId === nodeId) + 1;
+      graph.mark(index > 0 || nodeId === options.rootId ? index : undefined);
+      rows.get(nodeId)?.scrollIntoView({ block: 'nearest' });
+    },
+  };
 }
 
-function summaryTable(review: Review, you: Color): HTMLElement {
+function summaryTable(review: Review, options: ReviewOptions): HTMLElement {
   const table = document.createElement('table');
   table.className = 'summary';
 
   // Your column comes first whichever colour you took.
-  const columns: [string, Summary][] =
-    you === 'white'
-      ? [
-          ['You (White)', review.white],
-          ['Bot (Black)', review.black],
-        ]
-      : [
-          ['You (Black)', review.black],
-          ['Bot (White)', review.white],
-        ];
+  const yoursIsWhite = options.you === 'white';
+  const columns: [string, Summary, Summary | undefined][] = yoursIsWhite
+    ? [
+        ['You (White)', review.white, options.attempts?.you],
+        ['Bot (Black)', review.black, options.attempts?.bot],
+      ]
+    : [
+        ['You (Black)', review.black, options.attempts?.you],
+        ['Bot (White)', review.white, options.attempts?.bot],
+      ];
 
   const header = document.createElement('tr');
   for (const text of ['', ...columns.map(([label]) => label)]) {
@@ -61,21 +101,26 @@ function summaryTable(review: Review, you: Color): HTMLElement {
   }
   table.append(header);
 
-  const rows: [string, (s: Summary) => string][] = [
-    ['Average loss', s => `${s.acpl} cp`],
-    ['Best moves', s => String(s.best)],
-    ['Inaccuracies', s => String(s.inaccuracy)],
-    ['Mistakes', s => String(s.mistake)],
-    ['Blunders', s => String(s.blunder)],
+  const rows: [string, (line: Summary, attempts: Summary | undefined) => string][] = [
+    ['Average loss (final line)', line => `${line.acpl} cp`],
+    [
+      'Average loss (every attempt)',
+      (_line, attempts) => (attempts && attempts.moves > 0 ? `${attempts.acpl} cp` : '—'),
+    ],
+    ['Best moves', line => String(line.best)],
+    ['Inaccuracies', line => String(line.inaccuracy)],
+    ['Mistakes', line => String(line.mistake)],
+    ['Blunders', line => String(line.blunder)],
   ];
+
   for (const [label, read] of rows) {
     const row = document.createElement('tr');
     const name = document.createElement('th');
     name.textContent = label;
     row.append(name);
-    for (const [, summary] of columns) {
+    for (const [, line, attempts] of columns) {
       const cell = document.createElement('td');
-      cell.textContent = read(summary);
+      cell.textContent = read(line, attempts);
       row.append(cell);
     }
     table.append(row);
@@ -83,7 +128,13 @@ function summaryTable(review: Review, you: Color): HTMLElement {
   return table;
 }
 
-function chart(review: Review, onSelect: (ply: number) => void): SVGSVGElement {
+interface Chart {
+  readonly element: SVGSVGElement;
+  /** Draw the position marker, or clear it when nothing is selected. */
+  mark(index: number | undefined): void;
+}
+
+function chart(review: Review, options: ReviewOptions): Chart {
   const svg = svgEl('svg');
   svg.setAttribute('viewBox', `0 0 ${WIDTH} ${HEIGHT}`);
   svg.setAttribute('class', 'eval-chart');
@@ -107,9 +158,15 @@ function chart(review: Review, onSelect: (ply: number) => void): SVGSVGElement {
   line.setAttribute('d', linePath(points));
   line.setAttribute('class', 'eval-line');
 
-  svg.append(area, middle, line);
+  const cursor = svgEl('line');
+  cursor.setAttribute('y1', '0');
+  cursor.setAttribute('y2', String(HEIGHT));
+  cursor.setAttribute('class', 'eval-cursor');
+  cursor.setAttribute('visibility', 'hidden');
 
-  // A dot on every move worth a second look, clickable like the list.
+  svg.append(area, middle, line, cursor);
+
+  // A dot on every move worth a second look.
   for (const move of review.moves) {
     if (!NOTABLE.includes(move.judgement)) continue;
     const point = points[move.ply];
@@ -119,32 +176,52 @@ function chart(review: Review, onSelect: (ply: number) => void): SVGSVGElement {
     dot.setAttribute('cy', String(point.y));
     dot.setAttribute('r', '4');
     dot.setAttribute('class', `eval-mark ${move.judgement}`);
-    dot.addEventListener('click', () => {
-      onSelect(move.ply);
-    });
     const title = svgEl('title');
     title.textContent = `${move.san} — ${move.judgement}`;
     dot.append(title);
     svg.append(dot);
   }
 
-  return svg;
+  // Anywhere on the graph selects the nearest position, which is far easier to
+  // hit with a thumb than a four-pixel dot.
+  const surface = svgEl('rect');
+  surface.setAttribute('x', '0');
+  surface.setAttribute('y', '0');
+  surface.setAttribute('width', String(WIDTH));
+  surface.setAttribute('height', String(HEIGHT));
+  surface.setAttribute('class', 'eval-surface');
+  surface.addEventListener('click', event => {
+    const box = svg.getBoundingClientRect();
+    if (box.width === 0 || review.evals.length === 0) return;
+    const fraction = (event.clientX - box.left) / box.width;
+    const index = Math.round(fraction * (review.evals.length - 1));
+    const clamped = Math.max(0, Math.min(index, review.evals.length - 1));
+    options.onSelect(
+      clamped === 0 ? options.rootId : (review.moves[clamped - 1]?.nodeId ?? options.rootId),
+    );
+  });
+  svg.append(surface);
+
+  return {
+    element: svg,
+    mark(index) {
+      const point = index === undefined ? undefined : points[index];
+      if (!point) {
+        cursor.setAttribute('visibility', 'hidden');
+        return;
+      }
+      cursor.setAttribute('x1', String(point.x));
+      cursor.setAttribute('x2', String(point.x));
+      cursor.setAttribute('visibility', 'visible');
+    },
+  };
 }
 
-function moveList(review: Review, onSelect: (ply: number) => void): HTMLElement {
-  const list = document.createElement('div');
-  list.className = 'review-moves';
-  for (const move of review.moves) {
-    list.append(moveRow(move, onSelect));
-  }
-  return list;
-}
-
-function moveRow(move: ReviewedMove, onSelect: (ply: number) => void): HTMLElement {
+function moveRow(move: ReviewedMove, onSelect: (nodeId: number) => void): HTMLElement {
   const row = document.createElement('div');
   row.className = `review-move ${move.judgement}`;
   row.onclick = () => {
-    onSelect(move.ply);
+    onSelect(move.nodeId);
   };
 
   const heading = document.createElement('div');
