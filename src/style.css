@@ -1,0 +1,60 @@
+@import 'chessground/assets/chessground.base.css';
+@import 'chessground/assets/chessground.brown.css';
+@import 'chessground/assets/chessground.cburnett.css';
+
+:root {
+  color-scheme: dark;
+  --bg: #161512;
+  --fg: #bab9b5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font:
+    16px/1.45 system-ui,
+    -apple-system,
+    sans-serif;
+  /* Keep the board clear of the S20's rounded corners and notch. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
+
+main {
+  max-width: min(100vw, 100svh - 8rem);
+  margin: 0 auto;
+  padding: 12px;
+}
+
+#board {
+  width: 100%;
+  aspect-ratio: 1;
+}
+
+#status {
+  min-height: 3.2em;
+  margin: 12px 0 8px;
+}
+
+.bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+button {
+  font: inherit;
+  padding: 8px 14px;
+  border: 1px solid #4a4844;
+  border-radius: 6px;
+  background: #2c2a26;
+  color: var(--fg);
+}
