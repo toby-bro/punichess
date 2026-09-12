@@ -14,12 +14,9 @@ import { type Verdict, isError, judge, thresholdsFor, winPercent } from './refer
 import { renderReview } from './review-view.ts';
 import { reviewGame } from './review.ts';
 import { mountSettings } from './settings-panel.ts';
-import { loadSettings, saveSettings } from './settings.ts';
+import { loadSettings, saveSettings, withColour } from './settings.ts';
 import { Stats } from './stats.ts';
 
-/** The colour you play, and the one the bot gets. */
-const YOU: Color = 'white';
-const BOT: Color = 'black';
 /** Budget for move selection and for judging your move. */
 const SEARCH = { multiPV: 8, nodes: 1_000_000 } as const;
 /** A deeper budget, used before accusing you of anything. */
@@ -63,6 +60,9 @@ const scoreEl = element('score');
 const acplEl = element('acpl');
 const movesEl = element('moves');
 const reviewEl = element('review');
+const colourPicker = element('colour') as HTMLSelectElement;
+
+const other = (colour: Color): Color => (colour === 'white' ? 'black' : 'white');
 const buttons = {
   first: element('first'),
   back: element('back'),
@@ -90,6 +90,9 @@ function status(text: string, alarm = false): void {
 async function main(): Promise<void> {
   const engine = new Engine(`${import.meta.env.BASE_URL}engine/stockfish-18-lite-single.js`);
   let settings = loadSettings();
+  /** The colour you play, and the one the bot gets. Both change with the picker. */
+  let you: Color = settings.playAs;
+  let bot: Color = other(you);
   const history = new History(INITIAL_FEN);
   const stats = new Stats();
 
@@ -112,7 +115,7 @@ async function main(): Promise<void> {
 
   const board: Api = Chessground(element('board'), {
     fen: INITIAL_FEN,
-    orientation: YOU,
+    orientation: you,
     movable: {
       free: false,
       showDests: true,
@@ -134,13 +137,9 @@ async function main(): Promise<void> {
 
   status('Loading engine…');
   await engine.init();
-  await engine.newGame();
-  thinking = false;
-  pending = engine.analyse(history.fen, SEARCH);
-  status('Your move.');
-  render();
 
   wireControls();
+  await startGame();
 
   // ---------------------------------------------------------------- rendering
 
@@ -160,7 +159,7 @@ async function main(): Promise<void> {
       turnColor: turnOf(fen),
       // Highlight whichever side just moved, not only yours.
       ...(last ? { lastMove: [square(last.uci, 0), square(last.uci, 2)] } : { lastMove: [] }),
-      movable: { color: YOU, dests: movable ? legalDests(fen) : noDests() },
+      movable: { color: you, dests: movable ? legalDests(fen) : noDests() },
       // Shapes must go in the same call as the fen: chessground clears them
       // whenever a position is set.
       drawable: { shapes: mode.kind === 'rejected' ? rejectedShapes(mode.uci) : [] },
@@ -187,7 +186,7 @@ async function main(): Promise<void> {
       fen,
       turnColor: turnOf(fen),
       ...(previous ? { lastMove: [square(previous, 0), square(previous, 2)] } : { lastMove: [] }),
-      movable: { color: YOU, dests: noDests() },
+      movable: { color: you, dests: noDests() },
       drawable: { shapes },
     });
   }
@@ -239,21 +238,21 @@ async function main(): Promise<void> {
 
   /** Stop accepting moves without touching the position already on the board. */
   function lockBoard(): void {
-    board.set({ movable: { color: YOU, dests: noDests() } });
+    board.set({ movable: { color: you, dests: noDests() } });
     renderButtons();
   }
 
   function updateScore(): void {
     scoreEl.textContent = `spotted ${spotted} · missed ${missed}`;
-    const you = stats.summary(YOU);
-    const bot = stats.summary(BOT);
-    acplEl.textContent = you.moves === 0 ? '' : `you ${you.acpl} cp · bot ${bot.acpl} cp`;
+    const yours = stats.summary(you);
+    const theirs = stats.summary(bot);
+    acplEl.textContent = yours.moves === 0 ? '' : `you ${yours.acpl} cp · bot ${theirs.acpl} cp`;
   }
 
   // ---------------------------------------------------------------- navigation
 
   function canMove(): boolean {
-    return !thinking && mode.kind !== 'analysis' && history.turn === YOU && !outcomeOf(history.fen);
+    return !thinking && mode.kind !== 'analysis' && history.turn === you && !outcomeOf(history.fen);
   }
 
   function goTo(index: number): void {
@@ -272,7 +271,7 @@ async function main(): Promise<void> {
     const over = outcomeOf(history.fen);
     if (over)
       return over.winner ? `${over.reason} — ${over.winner} wins.` : `Draw: ${over.reason}.`;
-    return history.turn === YOU ? 'Your move.' : 'Thinking…';
+    return history.turn === you ? 'Your move.' : 'Thinking…';
   }
 
   function step(delta: number): void {
@@ -319,6 +318,15 @@ async function main(): Promise<void> {
     buttons.newGame.onclick = () => {
       void newGame();
     };
+    colourPicker.onchange = () => {
+      if (thinking) {
+        colourPicker.value = you;
+        return;
+      }
+      settings = withColour(settings, colourPicker.value === 'black' ? 'black' : 'white');
+      saveSettings(settings);
+      void startGame();
+    };
 
     document.addEventListener('keydown', event => {
       const keys: Record<string, () => void> = {
@@ -362,7 +370,7 @@ async function main(): Promise<void> {
     retries = 0;
     status('Playing on from here.');
     render();
-    if (history.turn === YOU) {
+    if (history.turn === you) {
       pending = engine.analyse(history.fen, SEARCH);
       status('Your move.');
       render();
@@ -393,7 +401,7 @@ async function main(): Promise<void> {
           reviewEl.textContent = `Reviewing… ${progress.done}/${progress.total}`;
         },
       );
-      renderReview(reviewEl, review, ply => {
+      renderReview(reviewEl, review, you, ply => {
         goTo(ply);
         document.getElementById('board')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
@@ -405,6 +413,20 @@ async function main(): Promise<void> {
 
   async function newGame(): Promise<void> {
     if (thinking) return;
+    await startGame();
+  }
+
+  /**
+   * Begin a game with the current settings.
+   *
+   * Playing Black means the bot opens, so this hands straight over rather than
+   * waiting for a move that cannot come.
+   */
+  async function startGame(): Promise<void> {
+    thinking = true;
+    you = settings.playAs;
+    bot = other(you);
+
     history.first();
     history.truncate();
     stats.reset();
@@ -416,12 +438,22 @@ async function main(): Promise<void> {
     mode = { kind: 'play' };
     reviewEl.hidden = true;
     reviewEl.replaceChildren();
+    colourPicker.value = you;
     panel.update(settings);
     updateScore();
+
     await engine.newGame();
-    pending = engine.analyse(history.fen, SEARCH);
-    status('New game. Your move.');
+    board.set({ orientation: you });
+
+    if (history.turn === you) {
+      thinking = false;
+      pending = engine.analyse(history.fen, SEARCH);
+      status('Your move.');
+      render();
+      return;
+    }
     render();
+    await botTurn();
   }
 
   // ----------------------------------------------------------------- the game

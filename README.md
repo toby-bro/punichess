@@ -22,6 +22,12 @@ back. Nothing is explained yet. Ask to be shown and the best move appears in
 Everything runs on the phone: Stockfish 18 compiled to WebAssembly, no server, no
 network after the first load.
 
+## Choosing sides
+
+_Play as_ takes White or Black. Picking Black flips the board and the bot opens.
+The choice is remembered, and switching sides starts a fresh game, since carrying
+a half-played position across colours would mean nothing.
+
 ## Settings
 
 Everything the bot decides from is a slider, and it is remembered between games.

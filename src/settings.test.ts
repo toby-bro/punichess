@@ -7,6 +7,7 @@ import {
   loadSettings,
   parseSettings,
   saveSettings,
+  withColour,
   withSetting,
 } from './settings.ts';
 
@@ -57,6 +58,40 @@ describe('parseSettings', () => {
   it('refuses to leave the blunder band inverted', () => {
     const parsed = parseSettings({ blunderMin: 400, blunderMax: 100 });
     assert.ok(parsed.blunderMax >= parsed.blunderMin);
+  });
+});
+
+describe('playAs', () => {
+  it('defaults to White', () => {
+    assert.equal(DEFAULT_SETTINGS.playAs, 'white');
+  });
+
+  it('keeps a valid colour', () => {
+    assert.equal(parseSettings({ playAs: 'black' }).playAs, 'black');
+    assert.equal(parseSettings({ playAs: 'white' }).playAs, 'white');
+  });
+
+  it('falls back for anything that is not a colour', () => {
+    for (const junk of ['grey', '', 0, null, undefined, {}]) {
+      assert.equal(parseSettings({ playAs: junk }).playAs, 'white');
+    }
+  });
+
+  it('keeps the colour already in force when the stored value is unusable', () => {
+    const asBlack = withColour(DEFAULT_SETTINGS, 'black');
+    assert.equal(parseSettings({ playAs: 'nonsense' }, asBlack).playAs, 'black');
+  });
+
+  it('switches sides without touching anything else', () => {
+    const switched = withColour(withSetting(DEFAULT_SETTINGS, 'targetAcpl', 55), 'black');
+    assert.equal(switched.playAs, 'black');
+    assert.equal(switched.targetAcpl, 55);
+  });
+
+  it('survives a round trip through storage', () => {
+    const storage = fakeStorage();
+    saveSettings(withColour(DEFAULT_SETTINGS, 'black'), storage);
+    assert.equal(loadSettings(storage).playAs, 'black');
   });
 });
 

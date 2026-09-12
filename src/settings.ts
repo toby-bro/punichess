@@ -8,7 +8,14 @@
 /** Where settings live in localStorage. */
 const STORAGE_KEY = 'spot-the-blunder.settings';
 
+import type { Color } from 'chessops/types';
+
+/** The fields that are plain tunable numbers, as opposed to a choice. */
+export type NumericSetting = Exclude<keyof Settings, 'playAs'>;
+
 export interface Settings {
+  /** The colour you play. The bot takes the other one. */
+  readonly playAs: Color;
   /**
    * The average centipawn loss the bot aims for across its honest moves.
    * This is the strength dial: 0 is best-move play, 60 is a distracted club
@@ -38,6 +45,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  playAs: 'white',
   targetAcpl: 25,
   quietBand: 100,
   blunderMin: 100,
@@ -64,7 +72,7 @@ const LIMITS = {
   maxMateDepth: [1, 5],
   ownBlunderCp: [20, 500],
   missedPunishCp: [10, 400],
-} as const satisfies Record<keyof Settings, readonly [number, number]>;
+} as const satisfies Record<NumericSetting, readonly [number, number]>;
 
 /** Ready-made strength levels, in terms people can reason about. */
 export interface Preset {
@@ -114,7 +122,11 @@ const clamp = (value: number, [low, high]: readonly [number, number]): number =>
 export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): Settings {
   const source = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {};
   const result = { ...base };
-  for (const key of Object.keys(LIMITS) as (keyof Settings)[]) {
+
+  const playAs = source['playAs'];
+  result.playAs = playAs === 'white' || playAs === 'black' ? playAs : base.playAs;
+
+  for (const key of Object.keys(LIMITS) as NumericSetting[]) {
     const value = source[key];
     if (typeof value === 'number' && Number.isFinite(value)) {
       result[key] = clamp(value, LIMITS[key]);
@@ -129,9 +141,15 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
   return result;
 }
 
-/** Apply a change, clamped and consistent. */
-export const withSetting = (settings: Settings, key: keyof Settings, value: number): Settings =>
+/** Apply a numeric change, clamped and consistent. */
+export const withSetting = (settings: Settings, key: NumericSetting, value: number): Settings =>
   parseSettings({ ...settings, [key]: value }, settings);
+
+/** Switch sides. Callers are expected to start a new game afterwards. */
+export const withColour = (settings: Settings, playAs: Color): Settings => ({
+  ...settings,
+  playAs,
+});
 
 /**
  * Read the stored settings.

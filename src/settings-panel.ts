@@ -5,10 +5,10 @@
  * report an edited one, and nothing about chess.
  */
 
-import { PRESETS, type Settings, withSetting } from './settings.ts';
+import { type NumericSetting, PRESETS, type Settings, withSetting } from './settings.ts';
 
 interface Field {
-  readonly key: keyof Settings;
+  readonly key: NumericSetting;
   readonly label: string;
   readonly help: string;
   readonly min: number;
@@ -142,8 +142,8 @@ export function mountSettings(
   }
   root.append(presets);
 
-  const readouts = new Map<keyof Settings, HTMLElement>();
-  const inputs = new Map<keyof Settings, HTMLInputElement>();
+  const readouts = new Map<NumericSetting, HTMLElement>();
+  const inputs = new Map<NumericSetting, HTMLInputElement>();
 
   for (const field of FIELDS) {
     const row = document.createElement('label');

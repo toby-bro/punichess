@@ -128,6 +128,24 @@ button:disabled {
   color: var(--dim);
 }
 
+.colour {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--dim);
+}
+
+.colour select {
+  font: inherit;
+  padding: 8px 10px;
+  min-height: 44px;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: var(--raised);
+  color: var(--fg);
+}
+
 /* ---------------------------------------------------------------- settings */
 
 #settings-box {

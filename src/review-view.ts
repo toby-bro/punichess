@@ -3,6 +3,8 @@
  * alternatives that were available.
  */
 
+import type { Color } from 'chessops/types';
+
 import { areaPath, chartPoints, linePath } from './chart.ts';
 import type { Review, ReviewedMove } from './review.ts';
 import type { Judgement, Summary } from './stats.ts';
@@ -28,18 +30,31 @@ export function formatEval(cp: number, mate?: number): string {
 export function renderReview(
   root: HTMLElement,
   review: Review,
+  you: Color,
   onSelect: (ply: number) => void,
 ): void {
   root.replaceChildren();
-  root.append(summaryTable(review), chart(review, onSelect), moveList(review, onSelect));
+  root.append(summaryTable(review, you), chart(review, onSelect), moveList(review, onSelect));
 }
 
-function summaryTable(review: Review): HTMLElement {
+function summaryTable(review: Review, you: Color): HTMLElement {
   const table = document.createElement('table');
   table.className = 'summary';
 
+  // Your column comes first whichever colour you took.
+  const columns: [string, Summary][] =
+    you === 'white'
+      ? [
+          ['You (White)', review.white],
+          ['Bot (Black)', review.black],
+        ]
+      : [
+          ['You (Black)', review.black],
+          ['Bot (White)', review.white],
+        ];
+
   const header = document.createElement('tr');
-  for (const text of ['', 'You', 'Bot']) {
+  for (const text of ['', ...columns.map(([label]) => label)]) {
     const cell = document.createElement('th');
     cell.textContent = text;
     header.append(cell);
@@ -57,11 +72,12 @@ function summaryTable(review: Review): HTMLElement {
     const row = document.createElement('tr');
     const name = document.createElement('th');
     name.textContent = label;
-    const white = document.createElement('td');
-    white.textContent = read(review.white);
-    const black = document.createElement('td');
-    black.textContent = read(review.black);
-    row.append(name, white, black);
+    row.append(name);
+    for (const [, summary] of columns) {
+      const cell = document.createElement('td');
+      cell.textContent = read(summary);
+      row.append(cell);
+    }
     table.append(row);
   }
   return table;
