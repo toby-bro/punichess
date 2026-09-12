@@ -23,11 +23,27 @@ export interface AnalyseOptions {
 /** How long to wait for the engine to answer before giving up on a search. */
 const TIMEOUT_MS = 60_000;
 
+/** Thrown by searches abandoned through `abort`. Not a failure: a change of mind. */
+export class Cancelled extends Error {
+  constructor() {
+    super('search cancelled');
+    this.name = 'Cancelled';
+  }
+}
+
+export const isCancelled = (error: unknown): boolean =>
+  error instanceof Cancelled || (error instanceof Error && error.name === 'Cancelled');
+
 export class Engine {
   readonly #worker: Worker;
   readonly #listeners = new Set<(line: string) => void>();
   #queue: Promise<unknown> = Promise.resolve();
   #multiPV = 1;
+  /**
+   * Bumped by `abort`. Work started under an older generation throws `Cancelled`
+   * instead of returning, so a caller that has moved on never acts on it.
+   */
+  #generation = 0;
 
   constructor(url: string) {
     this.#worker = new Worker(url);
@@ -57,7 +73,10 @@ export class Engine {
    */
   analyse(fen: string, options: AnalyseOptions = {}): Promise<PvLine[]> {
     const multiPV = options.multiPV ?? 1;
+    const generation = this.#generation;
     return this.#enqueue(async () => {
+      // Queued behind a search that has since been abandoned.
+      if (generation !== this.#generation) throw new Cancelled();
       if (multiPV !== this.#multiPV) {
         this.#send(`setoption name MultiPV value ${multiPV}`);
         this.#multiPV = multiPV;
@@ -67,12 +86,21 @@ export class Engine {
 
       const go = options.depth ? `go depth ${options.depth}` : `go nodes ${options.nodes ?? 1e6}`;
       const output = await this.#collect(go, line => line.startsWith('bestmove'));
+      // Aborting makes the engine answer early with whatever it has; that
+      // half-finished answer must not be mistaken for a completed search.
+      if (generation !== this.#generation) throw new Cancelled();
       return collectLines(output);
     });
   }
 
-  /** Abandon the current search. The queued promise still settles. */
-  stop(): void {
+  /**
+   * Abandon the running search and everything queued behind it.
+   *
+   * The engine answers a `stop` promptly, so the in-flight search settles on its
+   * own; marking the generation is what stops its result being used.
+   */
+  abort(): void {
+    this.#generation++;
     this.#send('stop');
   }
 
