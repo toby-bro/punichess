@@ -1,0 +1,43 @@
+# The project is mounted whole so every edit -- source, config, lockfile -- is
+# live in the container. node_modules is shadowed by a container-only volume, so
+# the dependency tree never lands on the host filesystem.
+x-project: &project
+  build: .
+  init: true
+  volumes:
+    - .:/app
+    - /app/node_modules
+
+services:
+  # Dev server with hot reload, reachable at http://localhost:8888
+  # and, from the phone on the same network, at http://<pc-ip>:8888
+  dev:
+    <<: *project
+    # Stays up across reboots and crashes, so the work-in-progress app is always
+    # there without anyone having to start it.
+    restart: unless-stopped
+    ports:
+      - '8888:5173'
+
+  # Produce the static site in ./dist, ready to publish.
+  build:
+    <<: *project
+    profiles: ['tools']
+    environment:
+      # Override for a project page, e.g. BASE=/chess/
+      BASE: ${BASE:-/}
+    command: npm run build
+
+  # Serve ./dist exactly as a static host would, to test the installed PWA.
+  serve:
+    <<: *project
+    profiles: ['tools']
+    ports:
+      - '4173:4173'
+    command: npm run preview
+
+  # Lint, typecheck and unit tests -- the same command CI runs.
+  check:
+    <<: *project
+    profiles: ['tools']
+    command: npm run check
