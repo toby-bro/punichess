@@ -73,6 +73,10 @@
       <div id="moves" class="moves" aria-label="Moves played"></div>
       <div class="controls moves-controls">
         <button id="expand-moves" type="button" aria-expanded="false">Show more</button>
+        <span class="spacer"></span>
+        <button id="swap" type="button" title="Take over the other side, keeping this position">
+          Swap sides
+        </button>
         <button id="new-game" type="button">New game</button>
         <label
           class="switch"
@@ -88,13 +92,7 @@
       <div class="bar">
         <span id="score">spotted 0 · missed 0 · made 0</span>
         <span id="acpl"></span>
-      </div>
-
-      <div class="controls">
         <span class="spacer"></span>
-        <button id="swap" type="button" title="Take over the other side, keeping this position">
-          Swap sides
-        </button>
         <button id="review-run" type="button">Review game</button>
         <label
           class="switch"

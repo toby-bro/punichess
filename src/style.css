@@ -345,13 +345,27 @@ button:disabled {
   color: var(--dim);
 }
 
+/* The counters and the review button belong together: both are about how the
+   game went rather than about playing it. */
 .bar {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 10px;
   font-size: 14px;
   color: var(--dim);
+}
+
+.bar .spacer {
+  flex: 1;
+}
+
+.bar button {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 14px;
+  color: var(--fg);
 }
 
 .colour {
