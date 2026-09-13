@@ -41,6 +41,8 @@ const muchSlower = (played: number, best: number): boolean =>
 export interface PositionScore {
   readonly cp: number;
   readonly mate?: number | undefined;
+  /** The move left the opponent with no legal move and no check: a draw. */
+  readonly stalemate?: boolean | undefined;
 }
 
 /**
@@ -52,14 +54,21 @@ export interface PositionScore {
 export function scorePosition(lines: readonly PvLine[], fen: string): PositionScore {
   const [best] = lines;
   if (best) return { cp: best.cp, mate: best.mate };
-  if (outcomeOf(fen)?.reason === 'checkmate') return { cp: -MATE_CP, mate: -0 };
+  if (outcomeOf(fen)?.reason === 'checkmate') return { cp: -MATE_CP, mate: 0 };
   return { cp: 0 };
 }
 
-/** The same score seen from the other side of the board. */
+/**
+ * The same score seen from the other side of the board.
+ *
+ * Zero is normalised on the way through: negating it gives -0, which is equal
+ * to 0 everywhere except the places that matter, like Object.is and a test.
+ */
+const flip = (value: number): number => (value === 0 ? 0 : -value);
+
 export const negate = (score: PositionScore): PositionScore => ({
-  cp: -score.cp,
-  mate: score.mate === undefined ? undefined : -score.mate,
+  cp: flip(score.cp),
+  mate: score.mate === undefined ? undefined : flip(score.mate),
 });
 
 /**
@@ -70,11 +79,11 @@ export const negate = (score: PositionScore): PositionScore => ({
  * search, or the two scores are not comparable.
  */
 export function scoreOfMove(childLines: readonly PvLine[], childFen: string): PositionScore {
+  const over = outcomeOf(childFen);
   // Delivering mate leaves the opponent with nothing to search.
-  if (childLines.length === 0 && outcomeOf(childFen)?.reason === 'checkmate') {
-    return { cp: MATE_CP, mate: 1 };
-  }
-  return negate(scorePosition(childLines, childFen));
+  if (childLines.length === 0 && over?.reason === 'checkmate') return { cp: MATE_CP, mate: 1 };
+  const score = negate(scorePosition(childLines, childFen));
+  return over?.reason === 'stalemate' ? { ...score, stalemate: true } : score;
 }
 
 export interface Verdict {
@@ -94,6 +103,14 @@ export interface Verdict {
    * move let it go. This is what turns "that was bad" into "that was mate in 2".
    */
   readonly mateIn?: number | undefined;
+  /**
+   * When the move mates too, but slower: how many moves longer it takes.
+   * "You had mate in 2 and played mate in 8" is a different mistake from
+   * throwing the mate away entirely, and deserves to read differently.
+   */
+  readonly mateLater?: number | undefined;
+  /** The move stalemated: a draw, not a loss, and not a missed mate either. */
+  readonly stalemate: boolean;
 }
 
 export interface Thresholds {
@@ -193,7 +210,10 @@ export function judge(
     cpLoss: Math.max(0, best.cp - score.cp),
     winLoss: Math.max(0, winPercent(best.cp) - winPercent(score.cp)),
     missesMate,
+    stalemate: score.stalemate === true,
     ...(missesMate ? { mateIn: bestMate } : {}),
+    // Only meaningful when the move mates as well, just later.
+    ...(missesMate && playedMate !== undefined ? { mateLater: playedMate - bestMate } : {}),
     // Being mated anyway is not this move's fault.
     hangsMate: playedIsMated && !bestIsMated,
     best,

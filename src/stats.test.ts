@@ -86,3 +86,28 @@ describe('Stats', () => {
     assert.equal(stats.acpl('you'), 0);
   });
 });
+
+describe('mates are counted, not averaged', () => {
+  it('keeps a missed mate out of the centipawn average', () => {
+    const stats = new Stats();
+    stats.add('you', 20, 2);
+    stats.add('you', 40, 4);
+    stats.add('you', 99_900, 50, true);
+    const summary = stats.summary('you');
+    assert.equal(summary.acpl, 30, 'a mate score would otherwise bury every real number');
+    assert.equal(summary.mates, 1);
+    assert.equal(summary.moves, 3, 'it still happened, and still counts as a move');
+  });
+
+  it('reports no average at all when every move was about mate', () => {
+    const stats = new Stats();
+    stats.add('you', 99_900, 50, true);
+    assert.equal(stats.summary('you').acpl, 0);
+    assert.equal(stats.summary('you').mates, 1);
+  });
+
+  it('still labels a missed mate as a blunder', () => {
+    const stats = new Stats();
+    assert.equal(stats.add('you', 99_900, 50, true).judgement, 'blunder');
+  });
+});

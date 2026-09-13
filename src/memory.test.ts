@@ -26,6 +26,7 @@ const blunder = (uci: string, cpLoss: number) => ({
   cpLoss,
   missesMate: false,
   hangsMate: false,
+  stalemate: false,
   mateIn: undefined,
 });
 

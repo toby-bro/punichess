@@ -45,8 +45,8 @@ make stays on the board, so two wrong tries show as two red arrows.
 
 Three ways out:
 
-- **Show me** — the three best answers drawn on the board, each labelled with
-  what it costs, and the winning line steppable move by move.
+- **Show me** — a toggle, not a mode: the three best answers appear on the board
+  with their evaluations and the board stays yours, so you can just play one.
 - **Punish me** — play your move and let the bot answer with _best moves only_,
   so you watch the refutation land instead of being told about it.
 - **Ignore** — play it and carry on as normal.

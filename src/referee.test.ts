@@ -336,3 +336,48 @@ describe('thresholdsFor', () => {
     assert.equal(thresholdsFor(DEFAULT_SETTINGS, false, true).evenWhenDecided, true);
   });
 });
+
+describe('stalemate and slower mates read differently', () => {
+  const mateInTwo: PvLine[] = [
+    { multipv: 1, cp: mateToCp(2), mate: 2, depth: 20, moves: ['a1a8'] },
+    { multipv: 2, cp: mateToCp(2), mate: 2, depth: 20, moves: ['a1a7'] },
+  ];
+
+  it('marks a stalemate as such rather than only as a missed mate', () => {
+    const verdict = judge(mateInTwo, 'g1g2', { cp: 0, stalemate: true });
+    assert.ok(verdict);
+    assert.equal(verdict.stalemate, true);
+    assert.equal(verdict.missesMate, true, 'the mate was still there');
+    assert.ok(isError(verdict, OWN_BLUNDER), 'and it still has to interrupt');
+  });
+
+  it('says how much slower a slower mate was', () => {
+    const verdict = judge(mateInTwo, 'a1a4', { cp: mateToCp(9), mate: 9 });
+    assert.ok(verdict);
+    assert.equal(verdict.missesMate, true);
+    assert.equal(verdict.mateIn, 2);
+    assert.equal(verdict.mateLater, 7, 'mate in 9 instead of mate in 2');
+  });
+
+  it('says nothing about being slower when the mate was thrown away', () => {
+    const verdict = judge(mateInTwo, 'g1g2', { cp: 150 });
+    assert.equal(verdict?.mateLater, undefined);
+  });
+
+  it('is not a stalemate merely because the move was bad', () => {
+    assert.equal(judge(mateInTwo, 'g1g2', { cp: 150 })?.stalemate, false);
+  });
+});
+
+describe('scoreOfMove sees a stalemate', () => {
+  it('reports the draw rather than a level middlegame', () => {
+    const stalemated = '7k/5Q2/6K1/8/8/8/8/8 b - - 0 1';
+    const score = scoreOfMove([], stalemated);
+    assert.equal(score.stalemate, true);
+    assert.equal(score.cp, 0);
+  });
+
+  it('does not call an ordinary position a stalemate', () => {
+    assert.equal(scoreOfMove([], INITIAL_FEN).stalemate, undefined);
+  });
+});

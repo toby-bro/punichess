@@ -21,6 +21,8 @@ export interface MoveInfo {
    * list can show where to come back to and try again.
    */
   playedAnyway: boolean;
+  /** You played it with the bot set to punish, rather than merely ignoring it. */
+  punished: boolean;
 }
 
 export interface TreeNode {
@@ -192,6 +194,7 @@ export class GameTree {
         by: turnOf(from.fen),
         deliberateError: options.deliberateError ?? false,
         playedAnyway: options.playedAnyway ?? false,
+        punished: false,
       },
       parent: from,
       children: [],
@@ -217,9 +220,14 @@ export class GameTree {
     return false;
   }
 
-  /** Mark the current move as one you were warned about and played regardless. */
-  markPlayedAnyway(): void {
-    if (this.#current.move) this.#current.move.playedAnyway = true;
+  /**
+   * Mark the current move as one you were warned about and played regardless,
+   * and whether you asked to be punished for it.
+   */
+  markPlayedAnyway(punished = false): void {
+    if (!this.#current.move) return;
+    this.#current.move.playedAnyway = true;
+    if (punished) this.#current.move.punished = true;
   }
 
   /** Move the viewpoint. Unknown ids are ignored rather than throwing. */

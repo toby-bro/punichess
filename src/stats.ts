@@ -42,6 +42,13 @@ export interface Scored {
   readonly cpLoss: number;
   readonly winLoss: number;
   readonly judgement: Judgement;
+  /**
+   * The move let a forced mate go, or walked into one.
+   *
+   * Counted on its own and kept out of the average, because a mate score is a
+   * hundred pawns and one of them buries every real number in the game.
+   */
+  readonly mate?: boolean | undefined;
 }
 
 export interface Entry extends Scored {
@@ -50,8 +57,10 @@ export interface Entry extends Scored {
 
 export interface Summary {
   readonly moves: number;
-  /** Average centipawn loss across those moves, 0 when there are none. */
+  /** Average centipawn loss, over the moves that were not about mate. */
   readonly acpl: number;
+  /** Moves that let a mate go or walked into one. */
+  readonly mates: number;
   readonly best: number;
   readonly good: number;
   readonly inaccuracy: number;
@@ -62,6 +71,7 @@ export interface Summary {
 const EMPTY: Summary = {
   moves: 0,
   acpl: 0,
+  mates: 0,
   best: 0,
   good: 0,
   inaccuracy: 0,
@@ -83,12 +93,13 @@ export class Stats {
     return this.#entries;
   }
 
-  add(by: Actor, cpLoss: number, winLoss: number): Entry {
+  add(by: Actor, cpLoss: number, winLoss: number, mate = false): Entry {
     const entry: Entry = {
       by,
       cpLoss: Math.max(0, cpLoss),
       winLoss: Math.max(0, winLoss),
       judgement: classify(cpLoss, winLoss),
+      ...(mate ? { mate: true } : {}),
     };
     this.#entries.push(entry);
     return entry;
@@ -112,14 +123,26 @@ export function summarise(entries: readonly Scored[]): Summary {
   if (entries.length === 0) return EMPTY;
   const counts = { best: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0 };
   let total = 0;
+  let scored = 0;
+  let mates = 0;
+
   for (const entry of entries) {
-    total += entry.cpLoss;
     counts[entry.judgement]++;
+    if (entry.mate === true) {
+      mates++;
+      // Left out of the average on purpose: a mate is scored as a hundred pawns,
+      // and averaging one in would say more about the arithmetic than the game.
+      continue;
+    }
+    total += entry.cpLoss;
+    scored++;
   }
+
   return {
     moves: entries.length,
     // Rounded because a fractional centipawn is noise pretending to be precision.
-    acpl: Math.round(total / entries.length),
+    acpl: scored === 0 ? 0 : Math.round(total / scored),
+    mates,
     ...counts,
   };
 }

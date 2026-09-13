@@ -17,6 +17,7 @@ import {
   outcomeOf,
   sanLine,
   sanOf,
+  stalemateCage,
   turnOf,
 } from './chess.ts';
 import { Engine, isCancelled } from './engine.ts';
@@ -57,17 +58,16 @@ interface Attempt {
  * What the board is showing.
  *
  * `rejected` is your move or moves taken back and drawn in red, with nothing
- * explained. `analysis` is the reveal: the best line, steppable move by move.
+ * explained, though the board is still yours -- being stopped is an invitation to
+ * try something else, not a room you are locked in.
  */
 type Mode =
   | { readonly kind: 'play' }
-  | { readonly kind: 'rejected'; readonly attempts: readonly Attempt[] }
   | {
-      readonly kind: 'analysis';
-      readonly base: string;
+      readonly kind: 'rejected';
       readonly attempts: readonly Attempt[];
-      readonly line: readonly string[];
-      readonly step: number;
+      /** Whether the explanation is showing. The board stays yours either way. */
+      readonly shown: boolean;
     };
 
 function element(id: string): HTMLElement {
@@ -86,6 +86,7 @@ const pgnFile = element('pgn-file') as HTMLInputElement;
 const punishToggle = element('punish-toggle') as HTMLInputElement;
 const evaluateBox = element('evaluate-box');
 const evaluateToggle = element('evaluate') as HTMLInputElement;
+const promotionBox = element('promotion');
 const evalBar = element('eval-bar');
 const evalFill = element('eval-fill');
 const evalText = element('eval-text');
@@ -98,7 +99,6 @@ const buttons = {
   reveal: element('reveal'),
   punish: element('punish'),
   ignore: element('ignore'),
-  resume: element('resume'),
   fork: element('fork'),
   another: element('another'),
   swap: element('swap'),
@@ -126,16 +126,44 @@ function status(text: string, alarm = false): void {
   statusEl.classList.toggle('alarm', alarm);
 }
 
-/** How much a rejected move cost, written short enough to sit on an arrow. */
-function costLabel(verdict: Verdict): string {
-  if (verdict.missesMate) return verdict.mateIn === undefined ? 'mate' : `#${verdict.mateIn}`;
-  if (verdict.hangsMate) return '#';
-  return `−${(verdict.cpLoss / 100).toFixed(1)}`;
+/**
+ * How much a move cost, short enough to sit on an arrow.
+ *
+ * Mate gets a # rather than a centipawn count, because a mate score is a hundred
+ * pawns and "−99.9" says nothing anyone wants to read. Stalemate gets the draw
+ * sign: it is neither a loss nor a missed mate, and calling it either was the
+ * most confusing thing the app did.
+ */
+function costLabel(cost: {
+  readonly stalemate?: boolean;
+  readonly missesMate?: boolean;
+  readonly hangsMate?: boolean;
+  readonly mateIn?: number | undefined;
+  readonly mateLater?: number | undefined;
+  readonly cpLoss: number;
+}): string {
+  if (cost.stalemate === true) return '½';
+  if (cost.missesMate === true) {
+    // A slower mate is still mate, so say how much slower rather than how much
+    // it "lost": the player did not lose anything, they took longer.
+    if (cost.mateLater !== undefined) return `#Δ${cost.mateLater}`;
+    return cost.mateIn === undefined ? '#' : `#${cost.mateIn}`;
+  }
+  if (cost.hangsMate === true) return '#';
+  return `−${(cost.cpLoss / 100).toFixed(1)}`;
 }
 
 /** Say what a move cost, in the terms that actually fit the position. */
 function describeCost(verdict: Verdict): string {
+  if (verdict.stalemate) {
+    return verdict.mateIn === undefined
+      ? 'That is stalemate — a draw, not a win.'
+      : `That is stalemate. It is a draw, and mate in ${verdict.mateIn} was there.`;
+  }
   if (verdict.missesMate) {
+    if (verdict.mateLater !== undefined) {
+      return `That mates ${verdict.mateLater} moves slower than it needed to.`;
+    }
     return verdict.mateIn === undefined
       ? 'That lets a forced mate slip.'
       : `That misses mate in ${verdict.mateIn}.`;
@@ -347,8 +375,7 @@ async function main(): Promise<void> {
   // --------------------------------------------------------------- rendering
 
   function render(): void {
-    if (mode.kind === 'analysis') renderAnalysis(mode);
-    else renderGame();
+    renderGame();
     moves.render();
     renderButtons();
   }
@@ -371,7 +398,10 @@ async function main(): Promise<void> {
         autoShapes: [
           ...(mode.kind === 'rejected' ? rejectedShapes(mode.attempts) : []),
           ...rememberedShapes(fen, mode.kind === 'rejected' ? mode.attempts : []),
-          ...(reviewing ? bestArrows(fen) : []),
+          // The explanation and the review both draw the engine's answers; the
+          // difference is that one of them you asked for a moment ago.
+          ...(reviewing || (mode.kind === 'rejected' && mode.shown) ? bestArrows(fen) : []),
+          ...(mode.kind === 'rejected' && mode.shown ? cageShapes(mode.attempts) : []),
         ],
       },
     });
@@ -470,76 +500,52 @@ async function main(): Promise<void> {
       .at(fen)
       .filter(mistake => !showing.has(mistake.uci))
       .map(mistake => {
-        const cost = mistake.missesMate
-          ? mistake.mateIn === undefined
-            ? 'mate'
-            : `#${mistake.mateIn}`
-          : `−${(mistake.cpLoss / 100).toFixed(1)}`;
         // "x3" is the part worth seeing: falling for the same move repeatedly is
         // a different problem from getting it wrong once.
         const times = mistake.times > 1 ? ` ×${mistake.times}` : '';
-        return arrow(mistake.uci, 'paleRed', `${cost}${times}`);
+        return arrow(mistake.uci, 'paleRed', `${costLabel(mistake)}${times}`);
       });
   }
 
-  function renderAnalysis(view: Extract<Mode, { kind: 'analysis' }>): void {
-    const played = view.line.slice(0, view.step);
-    const fen = played.reduce((position, uci) => fenAfter(position, uci), view.base);
-    const next = view.line[view.step];
-    const previous = view.step > 0 ? view.line[view.step - 1] : undefined;
-
-    const shapes: DrawShape[] = [];
-    if (view.step === 0) {
-      // At the start, the mistakes and the answers side by side.
-      shapes.push(...rejectedShapes(view.attempts));
-      const best = cache.get(view.base, SEARCH.nodes, SEARCH.multiPV) ?? [];
-      const top = best[0];
-      for (const [rank, line] of best.slice(0, REVEAL_ARROWS).entries()) {
-        const loss = top ? Math.max(0, top.cp - line.cp) : 0;
-        shapes.push(
-          arrow(
-            line.moves[0],
-            rank === 0 ? 'green' : 'blue',
-            rank === 0 ? 'best' : `−${(loss / 100).toFixed(1)}`,
-          ),
-        );
-      }
-    } else if (next) {
-      shapes.push(arrow(next, 'blue'));
+  /**
+   * The ring of squares around the stalemated king.
+   *
+   * Told "that misses mate in 2" while every arrow on the board says #2, a
+   * stalemate is baffling. Drawing the squares the king cannot go to says what
+   * actually happened.
+   */
+  function cageShapes(attempts: readonly Attempt[]): DrawShape[] {
+    const stalemated = attempts.find(attempt => attempt.verdict.stalemate);
+    if (!stalemated) return [];
+    try {
+      const cage = stalemateCage(fenAfter(tree.fen, stalemated.uci));
+      if (!cage) return [];
+      return [
+        { orig: cage.king as Key, brush: 'blue' },
+        ...cage.blocked.map((square): DrawShape => ({ orig: square as Key, brush: 'paleBlue' })),
+      ];
+    } catch {
+      return [];
     }
-
-    board.set({
-      fen,
-      turnColor: turnOf(fen),
-      ...(previous ? { lastMove: [square(previous, 0), square(previous, 2)] } : { lastMove: [] }),
-      movable: { color: you, dests: noDests() },
-      drawable: { autoShapes: shapes },
-    });
   }
 
   function renderButtons(): void {
-    const analysing = mode.kind === 'analysis';
-    if (mode.kind === 'analysis') {
-      // In the reveal the arrows walk the variation instead of the game.
-      buttons.first.toggleAttribute('disabled', mode.step === 0);
-      buttons.back.toggleAttribute('disabled', mode.step === 0);
-      buttons.forward.toggleAttribute('disabled', mode.step >= mode.line.length);
-      buttons.last.toggleAttribute('disabled', mode.step >= mode.line.length);
-    } else {
-      buttons.first.toggleAttribute('disabled', tree.atStart);
-      buttons.back.toggleAttribute('disabled', tree.atStart);
-      buttons.forward.toggleAttribute('disabled', tree.atLeaf);
-      buttons.last.toggleAttribute('disabled', tree.atLeaf);
-    }
+    buttons.first.toggleAttribute('disabled', tree.atStart);
+    buttons.back.toggleAttribute('disabled', tree.atStart);
+    buttons.forward.toggleAttribute('disabled', tree.atLeaf);
+    buttons.last.toggleAttribute('disabled', tree.atLeaf);
 
-    const stopped = mode.kind === 'rejected' || analysing;
+    const stopped = mode.kind === 'rejected';
+    const showing = mode.kind === 'rejected' && mode.shown;
     // The stamp follows the mode rather than the other way round, so stepping
     // out of the branch it was asked for turns it off here too.
     punishToggle.checked = punishing();
-    buttons.reveal.hidden = mode.kind !== 'rejected';
+    buttons.reveal.hidden = !stopped;
+    // A toggle, not a door: the board stays yours while the answer is showing.
+    buttons.reveal.textContent = showing ? 'Hide' : 'Show me';
     buttons.punish.hidden = !stopped;
     buttons.ignore.hidden = !stopped;
-    buttons.resume.hidden = !analysing;
+
     // Offered whenever the position in view needs someone to act on it: there is
     // a continuation to leave behind, or it is the bot's move and the bot is not
     // going to make it on its own because the search was interrupted. Without
@@ -558,7 +564,10 @@ async function main(): Promise<void> {
     scoreEl.textContent = `spotted ${spotted} · missed ${missed} · made ${made}`;
     const yours = stats.summary('you');
     const theirs = stats.summary('bot');
-    acplEl.textContent = yours.moves === 0 ? '' : `you ${yours.acpl} cp · bot ${theirs.acpl} cp`;
+    const mates =
+      yours.mates === 0 ? '' : ` · ${yours.mates} mate${yours.mates === 1 ? '' : 's'} missed`;
+    acplEl.textContent =
+      yours.moves === 0 ? '' : `you ${yours.acpl} cp${mates} · bot ${theirs.acpl} cp`;
   }
 
   // -------------------------------------------------------------- navigation
@@ -572,7 +581,7 @@ async function main(): Promise<void> {
    * the correction feel like a punishment rather than a second chance.
    */
   function canMove(): boolean {
-    if (thinking || mode.kind === 'analysis') return false;
+    if (thinking) return false;
     return tree.turn === you && !outcomeOf(tree.fen);
   }
 
@@ -607,11 +616,6 @@ async function main(): Promise<void> {
   }
 
   function step(delta: number): void {
-    if (mode.kind === 'analysis') {
-      mode = { ...mode, step: Math.max(0, Math.min(mode.step + delta, mode.line.length)) };
-      render();
-      return;
-    }
     interrupt();
     if (delta < 0) tree.back();
     else tree.forward();
@@ -667,10 +671,10 @@ async function main(): Promise<void> {
       render();
       return;
     }
-    const uci = withPromotion(orig, dest);
     const fen = tree.fen;
     thinking = true;
     lockBoard();
+    const uci = await withPromotion(orig, dest);
 
     try {
       const lines = await analyse(fen, SEARCH);
@@ -696,7 +700,14 @@ async function main(): Promise<void> {
 
       // Every attempt counts towards your accuracy, including this one if it is
       // about to be sent back.
-      if (verdict) stats.add('you', verdict.cpLoss, verdict.winLoss);
+      if (verdict) {
+        stats.add(
+          'you',
+          verdict.cpLoss,
+          verdict.winLoss,
+          verdict.missesMate || verdict.hangsMate || verdict.stalemate,
+        );
+      }
 
       if (verdict && isError(verdict, thresholds)) {
         thinking = false;
@@ -720,6 +731,9 @@ async function main(): Promise<void> {
 
   /** Play your move and hand over to the bot. */
   function accept(uci: string, playedAnyway = false): void {
+    // Carrying on from a reviewed position puts you back in a game, and the
+    // engine's answers must stop being drawn the moment that happens.
+    if (reviewing) closeReview();
     tree.play(uci);
     if (playedAnyway) tree.markPlayedAnyway();
     mode = { kind: 'play' };
@@ -735,7 +749,8 @@ async function main(): Promise<void> {
     if (!previous.some(attempt => attempt.uci === uci)) made++;
     // Keep every attempt: two wrong tries are two different misunderstandings.
     const attempts = [...previous.filter(attempt => attempt.uci !== uci), { uci, verdict }];
-    mode = { kind: 'rejected', attempts };
+    // A fresh mistake hides the previous explanation: it was about another move.
+    mode = { kind: 'rejected', attempts, shown: false };
 
     // Remembered against the position, so it comes back the next time you are
     // here -- next game, or next month.
@@ -745,7 +760,9 @@ async function main(): Promise<void> {
       cpLoss: verdict.cpLoss,
       missesMate: verdict.missesMate,
       hangsMate: verdict.hangsMate,
+      stalemate: verdict.stalemate,
       mateIn: verdict.mateIn,
+      mateLater: verdict.mateLater,
     });
 
     const forced = verdict.missesMate || verdict.hangsMate;
@@ -765,6 +782,12 @@ async function main(): Promise<void> {
   /** Show what the move cost, the best answers, and the line that follows. */
   function reveal(): void {
     if (mode.kind !== 'rejected') return;
+    if (mode.shown) {
+      mode = { ...mode, shown: false };
+      status('Your move — try again.');
+      render();
+      return;
+    }
     const attempts = mode.attempts;
     const worst = attempts.reduce((a, b) => (b.verdict.cpLoss > a.verdict.cpLoss ? b : a));
     if (tree.punishArmed) {
@@ -776,7 +799,7 @@ async function main(): Promise<void> {
     const line = worst.verdict.best.moves.slice(0, REVEAL_DEPTH);
     const sans = sanLine(tree.fen, line);
     status(`${describeCost(worst.verdict)} Best was ${sans[0] ?? '?'} — ${sans.join(' ')}`);
-    mode = { kind: 'analysis', base: tree.fen, attempts, line, step: 0 };
+    mode = { kind: 'rejected', attempts, shown: true };
     render();
   }
 
@@ -787,11 +810,11 @@ async function main(): Promise<void> {
    * watch the refutation actually land instead of being told about it.
    */
   function playAnyway(punish: boolean): void {
-    const attempts = mode.kind === 'rejected' || mode.kind === 'analysis' ? mode.attempts : [];
+    const attempts = mode.kind === 'rejected' ? mode.attempts : [];
     const chosen = attempts.at(-1);
     if (!chosen) return;
     const node = tree.play(chosen.uci);
-    tree.markPlayedAnyway();
+    tree.markPlayedAnyway(punish);
     punishFrom = punish ? node.id : undefined;
     mode = { kind: 'play' };
     status(punish ? 'Right — watch how that gets punished.' : 'Playing it anyway.');
@@ -897,11 +920,33 @@ async function main(): Promise<void> {
     renderButtons();
   }
 
-  function withPromotion(orig: Key, dest: Key): string {
-    // Auto-queen for now; a promotion picker is a later refinement.
+  /**
+   * Work out the move, asking which piece to promote to when it matters.
+   *
+   * Chessground has already moved the pawn by the time this runs, so the board
+   * shows the square in question while you choose.
+   */
+  async function withPromotion(orig: Key, dest: Key): Promise<string> {
     const piece = board.state.pieces.get(dest);
     const lastRank = dest.endsWith('8') || dest.endsWith('1');
-    return orig + dest + (piece?.role === 'pawn' && lastRank ? 'q' : '');
+    if (piece?.role !== 'pawn' || !lastRank) return orig + dest;
+    return orig + dest + (await askPromotion());
+  }
+
+  /** Show the picker and wait. Resolves with the chosen piece letter. */
+  function askPromotion(): Promise<string> {
+    return new Promise(resolve => {
+      promotionBox.hidden = false;
+      const buttons = [...promotionBox.querySelectorAll('button')];
+      const choose = (role: string) => () => {
+        promotionBox.hidden = true;
+        for (const button of buttons) button.onclick = null;
+        resolve(role);
+      };
+      for (const button of buttons) {
+        button.onclick = choose(button.dataset['role'] ?? 'q');
+      }
+    });
   }
 
   // ----------------------------------------------------------------- review
@@ -1115,21 +1160,11 @@ async function main(): Promise<void> {
 
   function wireControls(): void {
     buttons.first.onclick = () => {
-      if (mode.kind === 'analysis') {
-        mode = { ...mode, step: 0 };
-        render();
-        return;
-      }
       interrupt();
       tree.first();
       goTo(tree.current.id);
     };
     buttons.last.onclick = () => {
-      if (mode.kind === 'analysis') {
-        mode = { ...mode, step: mode.line.length };
-        render();
-        return;
-      }
       interrupt();
       tree.last();
       goTo(tree.current.id);
@@ -1146,11 +1181,6 @@ async function main(): Promise<void> {
     };
     buttons.ignore.onclick = () => {
       playAnyway(false);
-    };
-    buttons.resume.onclick = () => {
-      mode = { kind: 'play' };
-      status('Your move — try again.');
-      render();
     };
     buttons.fork.onclick = () => {
       void forkHere();

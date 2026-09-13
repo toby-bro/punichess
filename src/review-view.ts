@@ -95,24 +95,28 @@ function summaryTable(review: Review, options: ReviewOptions): HTMLElement {
         ['Bot (White)', review.white, options.attempts?.bot],
       ];
 
+  // Two columns per player: the line as it stands, and everything you actually
+  // tried. Reading them side by side is the point -- the gap between them is the
+  // part a game you were stopped during does not otherwise show.
   const header = document.createElement('tr');
-  for (const text of ['', ...columns.map(([label]) => label)]) {
-    const cell = document.createElement('th');
-    cell.textContent = text;
-    header.append(cell);
+  header.append(document.createElement('th'));
+  for (const [label] of columns) {
+    for (const sub of ['line', 'tried']) {
+      const cell = document.createElement('th');
+      cell.textContent = sub === 'line' ? label : 'tried';
+      if (sub === 'tried') cell.className = 'attempts';
+      header.append(cell);
+    }
   }
   table.append(header);
 
-  const rows: [string, (line: Summary, attempts: Summary | undefined) => string][] = [
-    ['Average loss (final line)', line => `${line.acpl} cp`],
-    [
-      'Average loss (every attempt)',
-      (_line, attempts) => (attempts && attempts.moves > 0 ? `${attempts.acpl} cp` : '—'),
-    ],
-    ['Best moves', line => String(line.best)],
-    ['Inaccuracies', line => String(line.inaccuracy)],
-    ['Mistakes', line => String(line.mistake)],
-    ['Blunders', line => String(line.blunder)],
+  const rows: [string, (summary: Summary) => string][] = [
+    ['Average loss', summary => `${summary.acpl} cp`],
+    ['Mates missed', summary => String(summary.mates)],
+    ['Best moves', summary => String(summary.best)],
+    ['Inaccuracies', summary => String(summary.inaccuracy)],
+    ['Mistakes', summary => String(summary.mistake)],
+    ['Blunders', summary => String(summary.blunder)],
   ];
 
   for (const [label, read] of rows) {
@@ -121,9 +125,12 @@ function summaryTable(review: Review, options: ReviewOptions): HTMLElement {
     name.textContent = label;
     row.append(name);
     for (const [, line, attempts] of columns) {
-      const cell = document.createElement('td');
-      cell.textContent = read(line, attempts);
-      row.append(cell);
+      const played = document.createElement('td');
+      played.textContent = read(line);
+      const tried = document.createElement('td');
+      tried.className = 'attempts';
+      tried.textContent = attempts && attempts.moves > 0 ? read(attempts) : '—';
+      row.append(played, tried);
     }
     table.append(row);
   }
@@ -192,16 +199,50 @@ function chart(review: Review, options: ReviewOptions): Chart {
   surface.setAttribute('width', String(WIDTH));
   surface.setAttribute('height', String(HEIGHT));
   surface.setAttribute('class', 'eval-surface');
-  surface.addEventListener('click', event => {
+
+  /** The position under a given screen x, or nothing if the graph is empty. */
+  const nodeUnder = (clientX: number): number | undefined => {
     const box = svg.getBoundingClientRect();
-    if (box.width === 0 || review.evals.length === 0) return;
-    const fraction = (event.clientX - box.left) / box.width;
-    const index = Math.round(fraction * (review.evals.length - 1));
-    const clamped = Math.max(0, Math.min(index, review.evals.length - 1));
-    options.onSelect(
-      clamped === 0 ? options.rootId : (review.moves[clamped - 1]?.nodeId ?? options.rootId),
+    if (box.width === 0 || review.evals.length === 0) return undefined;
+    const fraction = (clientX - box.left) / box.width;
+    const index = Math.max(
+      0,
+      Math.min(Math.round(fraction * (review.evals.length - 1)), review.evals.length - 1),
     );
+    return index === 0 ? options.rootId : (review.moves[index - 1]?.nodeId ?? options.rootId);
+  };
+
+  // Scrubbing rather than tapping. Pointer capture keeps the events coming once
+  // the finger leaves the graph, so the board follows the finger the whole way
+  // instead of jumping only when it is lifted.
+  let scrubbing = false;
+  let lastSent: number | undefined;
+  const sendAt = (clientX: number): void => {
+    const node = nodeUnder(clientX);
+    // Only when it actually changes: re-selecting the same position on every
+    // pointer event would redraw the board dozens of times a second.
+    if (node === undefined || node === lastSent) return;
+    lastSent = node;
+    options.onSelect(node);
+  };
+
+  surface.addEventListener('pointerdown', event => {
+    scrubbing = true;
+    lastSent = undefined;
+    surface.setPointerCapture(event.pointerId);
+    sendAt(event.clientX);
+    event.preventDefault();
   });
+  surface.addEventListener('pointermove', event => {
+    if (scrubbing) sendAt(event.clientX);
+  });
+  const release = (event: PointerEvent): void => {
+    scrubbing = false;
+    if (surface.hasPointerCapture(event.pointerId)) surface.releasePointerCapture(event.pointerId);
+  };
+  surface.addEventListener('pointerup', release);
+  surface.addEventListener('pointercancel', release);
+
   svg.append(surface);
 
   return {

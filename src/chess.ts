@@ -5,11 +5,12 @@
 
 import type { Dests, Key } from 'chessground/types';
 import { Chess } from 'chessops/chess';
+import { kingAttacks } from 'chessops/attacks';
 import { chessgroundDests } from 'chessops/compat';
 import { INITIAL_FEN, makeFen, parseFen } from 'chessops/fen';
 import { makeSan, parseSan } from 'chessops/san';
 import type { Color, Move } from 'chessops/types';
-import { makeUci, parseUci } from 'chessops/util';
+import { makeSquare, makeUci, parseUci } from 'chessops/util';
 
 export { INITIAL_FEN };
 
@@ -117,6 +118,25 @@ export const legalDests = (fen: string): Dests => chessgroundDests(position(fen)
 export const noDests = (): Dests => new Map<Key, Key[]>();
 
 export const turnOf = (fen: string): Color => position(fen).turn;
+
+/**
+ * The squares that explain a stalemate: the king, and everywhere it cannot go.
+ *
+ * Being told "that was stalemate" is one thing; seeing the ring of squares that
+ * are all covered is what makes it obvious next time.
+ */
+export function stalemateCage(fen: string): { king: string; blocked: string[] } | undefined {
+  const pos = position(fen);
+  if (!pos.isStalemate()) return undefined;
+
+  const king = pos.board.kingOf(pos.turn);
+  if (king === undefined) return undefined;
+
+  // In stalemate the king has no legal move at all, so every square around it is
+  // either covered or occupied by its own side.
+  const blocked = [...kingAttacks(king)].map(makeSquare);
+  return { king: makeSquare(king), blocked };
+}
 
 export interface GameOver {
   readonly reason: 'checkmate' | 'stalemate' | 'insufficient material' | 'draw';

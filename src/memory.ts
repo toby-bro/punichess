@@ -20,6 +20,9 @@ export interface Mistake {
   readonly missesMate: boolean;
   readonly hangsMate: boolean;
   readonly mateIn?: number | undefined;
+  /** How many moves longer your mate was than the one available. */
+  readonly mateLater?: number | undefined;
+  readonly stalemate: boolean;
   /** How many times you have played it here. */
   readonly times: number;
   /** When you last played it, as epoch milliseconds. */
@@ -42,7 +45,9 @@ function parseMistake(raw: unknown): Mistake | undefined {
     cpLoss: isFiniteNumber(value['cpLoss']) ? Math.max(0, value['cpLoss']) : 0,
     missesMate: value['missesMate'] === true,
     hangsMate: value['hangsMate'] === true,
+    stalemate: value['stalemate'] === true,
     mateIn: isFiniteNumber(value['mateIn']) ? value['mateIn'] : undefined,
+    mateLater: isFiniteNumber(value['mateLater']) ? value['mateLater'] : undefined,
     times: isFiniteNumber(value['times']) ? Math.max(1, Math.floor(value['times'])) : 1,
     last: isFiniteNumber(value['last']) ? value['last'] : 0,
   };
@@ -85,6 +90,7 @@ export class MistakeMemory {
       cpLoss: Math.max(mistake.cpLoss, previous?.cpLoss ?? 0),
       missesMate: mistake.missesMate || (previous?.missesMate ?? false),
       hangsMate: mistake.hangsMate || (previous?.hangsMate ?? false),
+      stalemate: mistake.stalemate || (previous?.stalemate ?? false),
       times: (previous?.times ?? 0) + 1,
       last: now,
     };

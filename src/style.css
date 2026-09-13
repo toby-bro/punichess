@@ -220,6 +220,31 @@ button:disabled {
   color: var(--fg);
 }
 
+/* Sits above the board rather than over it: a dialog covering the position is
+   the one thing you need to see while choosing. */
+.promotion {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: var(--raised);
+  font-size: 14px;
+  overflow-x: auto;
+}
+
+.promotion[hidden] {
+  display: none;
+}
+
+.promotion button {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 6px 10px;
+}
+
 /* A two-state slider. The label is the hit area, so the whole thing is tappable. */
 .switch {
   display: inline-flex;
@@ -521,6 +546,17 @@ button:disabled {
   text-align: left;
   font-weight: 400;
   color: var(--dim);
+}
+
+/* The "tried" columns are context for the ones beside them, not headline
+   numbers, so they read a step quieter. */
+.summary .attempts {
+  color: var(--dim);
+  font-size: 12px;
+}
+
+.eval-surface {
+  touch-action: none;
 }
 
 .eval-chart {

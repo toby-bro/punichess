@@ -99,8 +99,16 @@ function moveElement(
   const white = node.ply % 2 === 1;
   const prefix = white ? `${number}.` : needsNumber ? `${number}…` : '';
 
-  span.textContent = `${prefix}${prefix ? ' ' : ''}${move?.san ?? '?'}`;
-  span.title = move?.playedAnyway === true ? 'You were warned about this move and played it' : '';
+  // A star marks the ones you went into with the bot set to punish, which is a
+  // different decision from shrugging and playing on.
+  const star = move?.punished === true ? '★' : '';
+  span.textContent = `${prefix}${prefix ? ' ' : ''}${move?.san ?? '?'}${star}`;
+  span.title =
+    move?.punished === true
+      ? 'You played this knowing it was wrong, and asked to be punished for it'
+      : move?.playedAnyway === true
+        ? 'You were warned about this move and played it'
+        : '';
   span.onclick = () => {
     options.onSelect(node.id);
   };

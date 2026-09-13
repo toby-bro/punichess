@@ -9,6 +9,7 @@ import {
   outcomeOf,
   sanLine,
   sanOf,
+  stalemateCage,
   turnOf,
 } from './chess.ts';
 
@@ -109,5 +110,23 @@ describe('isLegal', () => {
 
   it('rejects nonsense', () => {
     assert.equal(isLegal('not a fen'), false);
+  });
+});
+
+describe('stalemateCage', () => {
+  it('describes nothing for a position that is still a game', () => {
+    assert.equal(stalemateCage(INITIAL_FEN), undefined);
+  });
+
+  it('names the trapped king and the ring around it', () => {
+    // Black king h8, white queen f7, white king g6: stalemate.
+    const cage = stalemateCage('7k/5Q2/6K1/8/8/8/8/8 b - - 0 1');
+    assert.ok(cage);
+    assert.equal(cage.king, 'h8');
+    assert.deepEqual([...cage.blocked].sort(), ['g7', 'g8', 'h7']);
+  });
+
+  it('says nothing about a checkmate, which is a different thing entirely', () => {
+    assert.equal(stalemateCage('R5k1/5ppp/8/8/8/8/8/6K1 b - - 0 1'), undefined);
   });
 });
