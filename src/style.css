@@ -219,6 +219,29 @@ main {
   aspect-ratio: 1;
 }
 
+/*
+ * The board is a control, not a page.
+ *
+ * A browser treats a touch on ordinary content as a question it cannot answer
+ * yet: is this a tap, a scroll, a pinch, or a long press about to select some
+ * text? So it waits, paints its own grey-blue highlight over whatever was
+ * touched while it waits, and then hands the event on -- or does not, if it
+ * decided the finger was scrolling. On a board where a touch means "pick this
+ * piece up" that is entirely wrong, and it is why a tap flashed blue and then
+ * did nothing, and why holding a piece did nothing at all.
+ *
+ * `touch-action: none` says there is no gesture here for the browser to wait
+ * for: the board wants the event immediately and will decide for itself. The
+ * rest turns off the things a browser does to text, which none of this is.
+ */
+.cg-wrap {
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /* chessground promotes every piece to its own compositing layer with
    will-change: transform. A promoted layer is rasterised once into a texture
    and then moved about, and with thirty-two of them a phone's compositor will
