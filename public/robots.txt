@@ -1,6 +1,2 @@
-# Everything here is public and there is only one page of it.
 User-agent: *
 Allow: /
-
-# No sitemap: a sitemap helps a crawler find pages it would not reach by
-# following links, and there are no other pages to find.
