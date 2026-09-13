@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import { MAX_PROBES } from './bot.ts';
 import {
   LOOKUP,
+  OPENING,
   MOVE_CEILING_NODES,
   PROBE,
   REVIEW,
@@ -78,5 +79,25 @@ describe('satisfies', () => {
   it('refuses one that was weaker in either dimension', () => {
     assert.equal(satisfies({ multiPV: 8, nodes: 400 }, { multiPV: 8, nodes: 500 }), false);
     assert.equal(satisfies({ multiPV: 2, nodes: 1000 }, { multiPV: 8, nodes: 500 }), false);
+  });
+});
+
+describe('the opening budget', () => {
+  it('costs less than an ordinary move', () => {
+    // The first search of a game is the slowest one anyone waits for: the engine
+    // has just been compiled and its tables are empty. On a phone that lands all
+    // at once, on move one.
+    assert.ok(OPENING.nodes < SEARCH.nodes);
+  });
+
+  it('still looks at as many moves', () => {
+    // Fewer nodes, not fewer candidates: the referee compares a move against the
+    // others in the same search, so narrowing the window would change what it
+    // can see rather than how long it takes.
+    assert.equal(OPENING.multiPV, SEARCH.multiPV);
+  });
+
+  it('is still beaten by a verification, so a close call can escalate', () => {
+    assert.ok(VERIFY.nodes > OPENING.nodes);
   });
 });

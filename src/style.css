@@ -45,6 +45,53 @@ main {
   position: relative;
   flex: 1 1 auto;
   min-width: 0;
+  /* So the coordinates can be sized as a fraction of the board rather than in
+     fixed pixels. A square is 12.5cqw whatever the screen. */
+  container-type: inline-size;
+}
+
+/* chessground positions coordinates for lichess's own wrapper: the ranks 20px
+   above the board, the files 24px to the right of it, both at a fixed 9px. In a
+   plain container that puts them outside the squares at a size that never
+   changes -- illegible on a phone, misplaced everywhere. These put them back
+   inside the board and scale them with it.
+
+   The colours are left alone: the theme already darkens or lightens each one to
+   contrast with the square it sits on. */
+.cg-wrap coords {
+  font-size: 11px;
+  font-size: 2.7cqw;
+  font-weight: 600;
+  font-family: inherit;
+  opacity: 1;
+}
+
+.cg-wrap coords.ranks {
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  padding-left: 0.6cqw;
+  align-items: flex-start;
+}
+
+/* Centred in its own rank rather than nudged by a percentage that only suited
+   the old font size. */
+.cg-wrap coords.ranks coord {
+  display: flex;
+  align-items: center;
+  transform: none;
+}
+
+.cg-wrap coords.files {
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: auto;
+  padding: 0 0.6cqw 0.4cqw 0;
+  /* a-h, as algebraic notation writes them. */
+  text-transform: none;
+  text-align: right;
 }
 
 #board {

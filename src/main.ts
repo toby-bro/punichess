@@ -7,7 +7,17 @@ import type { Key } from 'chessground/types';
 import type { Color } from 'chessops/types';
 
 import { type Policy, chooseMove } from './bot.ts';
-import { LOOKUP, PROBE, REVIEW, SEARCH, VERIFY, WIDE } from './budgets.ts';
+import {
+  type Budget,
+  LOOKUP,
+  OPENING,
+  OPENING_PLIES,
+  PROBE,
+  REVIEW,
+  SEARCH,
+  VERIFY,
+  WIDE,
+} from './budgets.ts';
 import { PositionCache } from './cache.ts';
 import {
   INITIAL_FEN,
@@ -362,9 +372,19 @@ async function main(): Promise<void> {
     return search;
   }
 
+  /**
+   * What to spend on the position in front of us.
+   *
+   * Less in the opening, where the first search of the game is also the slowest
+   * one anybody waits for and the one a shallow look serves best.
+   */
+  function budget(): Budget {
+    return tree.current.ply < OPENING_PLIES ? OPENING : SEARCH;
+  }
+
   /** Start thinking about a position nobody has asked about yet. */
   function warm(fen: string): void {
-    void analyse(fen, SEARCH).catch(() => undefined);
+    void analyse(fen, budget()).catch(() => undefined);
   }
 
   /**
@@ -733,8 +753,13 @@ async function main(): Promise<void> {
       return;
     }
 
+    // Say so at once. Judging takes a moment even when it is quick, and on a
+    // cold engine on a phone it takes several -- during which the board was
+    // locked, the piece had moved, and the status still read "Your move".
+    status('Checking…');
+
     try {
-      const lines = await analyse(fen, SEARCH);
+      const lines = await analyse(fen, budget());
       // In punish mode the position is lost by construction, so the "already
       // decided" silence has to be lifted or nothing you do afterwards is judged.
       const thresholds = thresholdsFor(settings, tree.punishArmed, punishing());
@@ -916,10 +941,10 @@ async function main(): Promise<void> {
     const startedAt = Date.now();
     try {
       const fen = tree.fen;
-      const lines = await analyse(fen, SEARCH);
+      const lines = await analyse(fen, budget());
       const move = await chooseMove(
         {
-          search: position => analyse(position, SEARCH),
+          search: position => analyse(position, budget()),
           searchWide: position => analyse(position, WIDE),
           probe: position => analyse(position, PROBE),
           settings,

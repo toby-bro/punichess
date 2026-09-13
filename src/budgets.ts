@@ -24,6 +24,20 @@ export interface Budget {
  */
 export const SEARCH: Budget = { multiPV: 8, nodes: 350_000 };
 
+/**
+ * The opening, where the first search of the game happens.
+ *
+ * That search is the slowest one a player ever waits for: the engine has just
+ * been compiled, its tables are empty, and on a phone the whole thing lands at
+ * once on the very first move. Opening positions are also the ones where a
+ * shallow look is most nearly as good as a deep one, so this is where to spend
+ * less. A verdict too close to call still escalates to VERIFY.
+ */
+export const OPENING: Budget = { multiPV: 8, nodes: 120_000 };
+
+/** How many plies count as the opening for that purpose. */
+export const OPENING_PLIES = 8;
+
 /** Deeper, and only reached when a verdict is too close to call. */
 export const VERIFY: Budget = { multiPV: 8, nodes: 1_200_000 };
 

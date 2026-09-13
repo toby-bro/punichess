@@ -7,7 +7,7 @@
  * check deterministic; this is here to tell you what those bounds feel like.
  */
 import { MAX_PROBES } from '../src/bot.ts';
-import { LOOKUP, PROBE, REVIEW, SEARCH, VERIFY, WIDE } from '../src/budgets.ts';
+import { LOOKUP, OPENING, PROBE, REVIEW, SEARCH, VERIFY, WIDE } from '../src/budgets.ts';
 import { collectLines } from '../src/uci.ts';
 
 import initEngine from 'stockfish';
@@ -47,12 +47,14 @@ const search = async (fen, budget) => {
 };
 
 const MIDGAME = 'r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/2N2N2/PPPP1PPP/R1BQK2R w KQkq - 6 5';
+const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const MATE = '6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1';
 
 console.log('budget                         multiPV     nodes     time  depth  lines');
 const timings = new Map();
 for (const [label, budget] of [
-  ['SEARCH  (every move)', SEARCH],
+  ['OPENING (first few moves)', OPENING],
+  ['SEARCH  (every move after)', SEARCH],
   ['WIDE    (hunting an error)', WIDE],
   ['PROBE   (is it punishable)', PROBE],
   ['LOOKUP  (one unlisted move)', LOOKUP],
@@ -66,6 +68,15 @@ for (const [label, budget] of [
       `${String(ms).padStart(6)}ms ${String(lines[0]?.depth ?? 0).padStart(5)} ${String(lines.length).padStart(6)}`,
   );
 }
+
+// The one that actually hurts: the very first search of a game, on an engine
+// that has just started, with nothing in its tables.
+const cold = await search(START, OPENING);
+console.log(
+  `\nfirst move of the game:  ${cold.ms}ms at the opening budget (depth ${cold.lines[0]?.depth})`,
+);
+const warm = await search(START, SEARCH);
+console.log(`the same at the old one: ${warm.ms}ms (depth ${warm.lines[0]?.depth})`);
 
 const ordinary = timings.get('SEARCH') ?? 0;
 const hunting = (timings.get('WIDE') ?? 0) + MAX_PROBES * (timings.get('PROBE') ?? 0);
