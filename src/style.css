@@ -50,11 +50,19 @@ main {
   container-type: inline-size;
 }
 
+#board {
+  width: 100%;
+  aspect-ratio: 1;
+}
+
 /* chessground positions coordinates for lichess's own wrapper: the ranks 20px
    above the board, the files 24px to the right of it, both at a fixed 9px. In a
    plain container that puts them outside the squares at a size that never
-   changes -- illegible on a phone, misplaced everywhere. These put them back
-   inside the board and scale them with it.
+   changes -- illegible on a phone, misplaced everywhere.
+
+   These put each one in a corner of its own square, the way a board is read:
+   numbers top-left down the left-hand file, letters bottom-right along the
+   bottom rank. Sized in cqw so they hold that position at any board size.
 
    The colours are left alone: the theme already darkens or lightens each one to
    contrast with the square it sits on. */
@@ -71,15 +79,18 @@ main {
   left: 0;
   width: 100%;
   height: 100%;
-  padding-left: 0.6cqw;
+  padding: 0;
+  /* Cross axis here is horizontal, so this hugs each number to the left edge
+     rather than stretching it across the board. */
   align-items: flex-start;
 }
 
-/* Centred in its own rank rather than nudged by a percentage that only suited
-   the old font size. */
 .cg-wrap coords.ranks coord {
   display: flex;
-  align-items: center;
+  /* Top of its own rank, not the middle: the base sheet nudged it down by a
+     percentage that only suited the old font size. */
+  align-items: flex-start;
+  padding: 0.4cqw 0 0 0.5cqw;
   transform: none;
 }
 
@@ -88,15 +99,16 @@ main {
   bottom: 0;
   width: 100%;
   height: auto;
-  padding: 0 0.6cqw 0.4cqw 0;
+  padding: 0;
+  text-align: right;
   /* a-h, as algebraic notation writes them. */
   text-transform: none;
-  text-align: right;
 }
 
-#board {
-  width: 100%;
-  aspect-ratio: 1;
+/* Padding on each letter rather than the row, so every one is in the corner of
+   its own square instead of only the last one being inset. */
+.cg-wrap coords.files coord {
+  padding: 0 0.5cqw 0.35cqw 0;
 }
 
 /* Only ever shown with the review open. During a game it would announce the
