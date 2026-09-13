@@ -16,6 +16,18 @@ updates:
         patterns: ['*']
         update-types: [minor, patch]
 
+    ignore:
+      # TypeScript 7 is the Go rewrite, and typescript-eslint 8 declares
+      # `peer typescript: >=4.8.4 <6.1.0`. npm refuses the combination outright,
+      # so every weekly run opens a pull request whose very first step cannot
+      # install. Nothing here is wrong and there is nothing to fix in it.
+      #
+      # Lift this the moment typescript-eslint ships a release whose peer range
+      # admits 7; the point is to stop reopening a pull request that cannot pass,
+      # not to stay on 6 for ever.
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+
   # The actions were all a major or two behind before anyone noticed, which is
   # exactly the kind of drift nobody goes looking for.
   - package-ecosystem: github-actions
