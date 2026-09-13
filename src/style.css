@@ -82,6 +82,48 @@ main {
   flex: 0 0 auto;
 }
 
+/* The name, and the way out to the source. */
+.title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/*
+ * Barely there until you look for it.
+ *
+ * It is not part of playing chess, so at rest it is faint enough to read as
+ * texture; on hover or keyboard focus it goes fully white, which is the only
+ * signal it needs to give that it is a link at all.
+ */
+.repo {
+  flex: 0 0 auto;
+  display: inline-flex;
+  padding: 8px;
+  border-radius: 6px;
+  color: var(--fg);
+  opacity: 0.45;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease;
+}
+
+.repo:hover,
+.repo:focus-visible {
+  opacity: 1;
+  color: #fff;
+}
+
+.repo svg {
+  display: block;
+  /* Overrides the width and height attributes, which are there to give the
+     element a size before this file has loaded at all. */
+  width: clamp(20px, 6vw, 26px);
+  height: auto;
+  fill: currentcolor;
+}
+
 /*
  * The name, with a line to itself.
  *

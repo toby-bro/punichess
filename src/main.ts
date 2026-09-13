@@ -335,8 +335,8 @@ async function main(): Promise<void> {
    */
   watchForUpdates({
     onTakenOver: () => {
-      if (tree.atStart && tree.root.children.length === 0) {
-        globalThis.location.reload();
+      if (tree.root.children.length === 0) {
+        takeUpdate();
         return;
       }
       buttons.update.hidden = false;
@@ -1180,6 +1180,26 @@ async function main(): Promise<void> {
   }
 
   /** Store the game as it stands, evaluations and all. */
+  /**
+   * Reload into the new version, keeping the game.
+   *
+   * syncSaved only updates a game that has already been saved -- a game in
+   * progress that you never pressed Save on exists nowhere but in this page, and
+   * reloading would have thrown it away. So it gets saved first, whether you
+   * asked for that or not: an unwanted entry in a list you can delete is a much
+   * smaller problem than losing the game you were in the middle of.
+   */
+  function takeUpdate(): void {
+    if (tree.root.children.length > 0) {
+      if (openGameId === undefined) {
+        openGameId = library.save(currentGame()).id;
+      } else {
+        syncSaved();
+      }
+    }
+    globalThis.location.reload();
+  }
+
   function saveGame(): void {
     if (tree.root.children.length === 0) {
       status('Nothing to save yet.');
@@ -1385,11 +1405,7 @@ async function main(): Promise<void> {
       void startGame();
     };
     buttons.saveGame.onclick = saveGame;
-    // Whatever is in progress is already in storage -- it is saved on every
-    // move -- so this loses a position on the board and nothing else.
-    buttons.update.onclick = () => {
-      globalThis.location.reload();
-    };
+    buttons.update.onclick = takeUpdate;
     buttons.clearAnalysis.onclick = () => {
       library.clearAnalysis();
       games.render();

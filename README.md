@@ -233,7 +233,16 @@ takes over it reloads the page, which the old registration never did either.
 If nothing has been played yet the reload is immediate and you see nothing. In
 the middle of a game it waits to be asked, because pulling the page out from
 under a position you are thinking about is a worse interruption than the one it
-is announcing.
+is announcing. Either way the game in progress is saved first, even if you never
+pressed Save: a reload throws away everything the page is holding, and an unsaved
+game is held nowhere else.
+
+Nothing needs cache-busting by hand. Vite already gives every script and
+stylesheet a content hash in its filename, so a changed file is a different URL
+and can never be served stale. Only two files cannot work that way -- `index.html`
+and `sw.js`, because something has to sit at a fixed address for any of it to be
+found -- and the worker covers both: `index.html` is precached with a content
+revision, and `sw.js` is fetched past the HTTP cache on every check.
 
 ### Changing dependencies
 

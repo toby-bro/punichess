@@ -29,8 +29,9 @@ export interface UpdateHooks {
   /**
    * A new version is now in charge and this page is running the old one.
    *
-   * Whether to reload immediately is the caller's call: yanking the page out
-   * from under a game in progress is worse than being a version behind.
+   * Whether to reload, and what to put somewhere safe first, is the caller's
+   * business. A reload throws away everything the page is holding, and a game
+   * that has not been saved is held nowhere else.
    */
   readonly onTakenOver: () => void;
 }
