@@ -595,7 +595,7 @@ describe('a piece you just hung', () => {
     assert.equal(move.deliberateError, false, 'a hung queen is not an opportunity to err');
   });
 
-  it('is left alone when it is only a pawn', async () => {
+  it('is left alone when it is only a pawn', () => {
     // Taking on d5 is available and free, but a pawn is a judgement call, and
     // declining one is the sort of thing people do all the time.
     const kind = moveKind(hungPawn, 'e4d5');

@@ -210,7 +210,7 @@ function parseMetrics(raw: unknown): GameMetrics {
  * Settings are taken as they come and not validated here: they are a record of
  * what the bot was set to, not something about to be used.
  */
-function parseGame(raw: unknown): SavedGame | undefined {
+export function parseGame(raw: unknown): SavedGame | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined;
   const value = raw as Record<string, unknown>;
   const { id, name, start, nodes } = value;

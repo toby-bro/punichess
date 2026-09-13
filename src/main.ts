@@ -39,6 +39,7 @@ import { Engine, isCancelled } from './engine.ts';
 import {
   GameLibrary,
   type NewGame,
+  type SavedGame,
   type SavedEval,
   restoreTree,
   serialiseTree,
@@ -47,6 +48,7 @@ import { mountLibrary } from './library-view.ts';
 import { MistakeMemory } from './memory.ts';
 import { mountMoves } from './moves-view.ts';
 import { PgnImportError, fromPgn, pgnDate, toPgn } from './pgn.ts';
+import { dropSession, keepSession, takeSession } from './session.ts';
 import { watchForUpdates } from './updates.ts';
 import { arrow, costLabel, evalLabel, readable, rememberedArrow, square } from './shapes.ts';
 import {
@@ -354,7 +356,14 @@ async function main(): Promise<void> {
   status('Loading engine…');
   await engine.init();
   wireControls();
-  await startGame();
+  // Pick the game in progress back up, if there is one. A reload -- the dev
+  // server's, the phone's, or a stray refresh -- should not cost you a game.
+  const unfinished = takeSession();
+  if (unfinished) {
+    await resumeGame(unfinished);
+  } else {
+    await startGame();
+  }
 
   // --------------------------------------------------------------- searching
 
@@ -696,6 +705,8 @@ async function main(): Promise<void> {
     cache.clear();
     savedEvals = new Map();
     openGameId = undefined;
+    // Whatever was being kept across reloads belonged to the game just left.
+    dropSession();
     stats.reset();
     // Last game's mistakes belong to last game. Openings repeat, and painting
     // them onto a board you have only just set up says nothing about this game.
@@ -1254,7 +1265,11 @@ async function main(): Promise<void> {
    * remember to press save.
    */
   function syncSaved(): void {
-    if (openGameId === undefined || tree.root.children.length === 0) return;
+    if (tree.root.children.length === 0) return;
+    // Kept whether or not you have saved this game, and separately from the
+    // ones you have: a reload should not cost you the game you are playing.
+    keepSession(currentGame());
+    if (openGameId === undefined) return;
     if (!library.update(openGameId, currentGame())) {
       // It was deleted while being played; stop pretending it is still there.
       openGameId = undefined;
@@ -1276,6 +1291,32 @@ async function main(): Promise<void> {
       .join(' ');
     const date = new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
     return opening.length > 0 ? `${opening} — ${date}` : `Game — ${date}`;
+  }
+
+  /**
+   * Carry on with the game that was in progress when the page went away.
+   *
+   * The same restoring a saved game does, minus the part that ties it to an
+   * entry in the library: this game is not in the list, and resuming it must not
+   * put it there or quietly start updating something else.
+   */
+  async function resumeGame(game: SavedGame): Promise<void> {
+    const restored = restoreTree(game);
+    tree = restored.tree;
+    savedEvals = restored.evals;
+    cache.restore(game.cache);
+    memory.restore(game.mistakes);
+    spotted = game.metrics.spotted;
+    missed = game.metrics.missed;
+    made = game.metrics.made;
+    you = game.playedAs;
+    mode = { kind: 'play' };
+    moves = mountMoves(element('moves'), tree, { onSelect: goTo, revealed });
+    board.set({ orientation: you });
+    updateScore();
+    await engine.newGame();
+    status('Picked up where you left off.');
+    await handOver();
   }
 
   /** Reopen a saved game, with everything that was known about it. */
