@@ -328,6 +328,28 @@ Unit tests feed fabricated search output to the pure logic. The engine test prov
 Stockfish actually emits what the parser expects, and that the thresholds behave on
 real positions.
 
+### Measuring the bot
+
+Three scripts, none of them part of the test suite, because they need the engine
+and take minutes rather than milliseconds.
+
+| command             | answers                                              |
+| ------------------- | ---------------------------------------------------- |
+| `npm run bench`     | what each search budget costs                        |
+| `npm run bot:kinds` | what kind of error the bot makes, by what refutes it |
+| `npm run bot:why`   | when it is asked for an error and makes none, why    |
+
+`bot:kinds` classifies every deliberate error by its refutation: `mate`, `check`
+(a check that captures nothing -- a discovered or double check), `sac` (a capture
+into a defended square), `quiet`, and `grab` (a capture of something hanging,
+which the policy is supposed to refuse -- any of these appearing means a filter
+has a hole in it).
+
+Both play the bot against an engine playing best moves. An earlier version let
+both sides err and its numbers were worthless: the positions it produced were
+lopsided ones no game reaches, where every "error" is meaningless and every
+"refutation" is just the best move in a position that was already won.
+
 ## Board and pieces
 
 Sixteen piece sets and six board colours, under _Board and pieces_. Both pickers

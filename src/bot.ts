@@ -242,6 +242,29 @@ export interface Candidate {
   readonly cpLoss: number;
 }
 
+/** What the player has to see in order to punish an error. */
+export type PunishKind = 'mate' | 'check' | 'sac' | 'quiet' | 'grab';
+
+/**
+ * How much of a lesson each kind of refutation is.
+ *
+ * A forced mate is unarguable and it is the thing people most want to be shown.
+ * A check that captures nothing is a discovered or double check -- the whole
+ * reason this ranking exists, since those are exactly the errors that never came
+ * up when the first passable candidate won. A capture into a defended square is
+ * a real sacrifice. A quiet move at the end is often not a refutation at all but
+ * a position that was simply better, so it goes last.
+ */
+const PUNISH_RANK: Record<PunishKind, number> = { mate: 4, check: 3, sac: 2, quiet: 1, grab: 0 };
+
+/** Classify a refutation by what makes it work. */
+export function punishKind(after: string, punish: PvLine): PunishKind {
+  if (punish.mate !== undefined && punish.mate > 0) return 'mate';
+  const kind = moveKind(after, punish.moves[0]);
+  if (!kind.capture) return kind.check ? 'check' : 'quiet';
+  return kind.defended ? 'sac' : 'grab';
+}
+
 /**
  * Find an error worth making: costly enough to matter, cheap enough to recover
  * from, and above all one with a clear refutation for the player to find.
@@ -257,15 +280,15 @@ export async function pickBlunder(
 ): Promise<Candidate | undefined> {
   const random = policy.random ?? Math.random;
   const { blunderMin, blunderMax } = policy.settings;
-  const candidates = shuffle(
-    wide.filter(line => {
-      const loss = lossOf(best, line);
-      return loss >= blunderMin && loss <= blunderMax;
-    }),
-    random,
-  ).slice(0, MAX_PROBES);
+  const band = wide.filter(line => {
+    const loss = lossOf(best, line);
+    return loss >= blunderMin && loss <= blunderMax;
+  });
+  const candidates = sampleByCost(band, best, MAX_PROBES, random);
 
   const probe = policy.probe ?? policy.search;
+
+  let chosen: { candidate: Candidate; rank: number; margin: number } | undefined;
 
   for (const candidate of candidates) {
     const uci = candidate.moves[0];
@@ -274,24 +297,66 @@ export async function pickBlunder(
 
     // A punishable error is one where the right reply stands out. If every reply
     // is about as good there is no insight to have, so try another error.
-    if (!punish || !second || punish.cp - second.cp < PUNISH_MARGIN) continue;
+    if (!punish || !second) continue;
+    const margin = punish.mate !== undefined ? Number.POSITIVE_INFINITY : punish.cp - second.cp;
+    if (margin < PUNISH_MARGIN) continue;
 
     // "I move this piece somewhere it gets taken" is not a mistake worth
     // spotting, it is one worth ignoring, so an answer that just takes the piece
     // that moved is not an answer worth setting up.
     if (destOf(punish.moves[0]) === destOf(uci)) continue;
 
-    // Nor is picking up something left hanging elsewhere. The refutation has to
-    // be a move rather than a helping: something quiet, or a capture into a
-    // defended square, which is to say a tactic. Measured over a real game, this
-    // keeps five of every six clear-cut refutations and throws away exactly the
-    // free lunches.
-    const answer = moveKind(after, punish.moves[0]);
-    if (answer.capture && !answer.defended) continue;
+    const kind = punishKind(after, punish);
+    // Picking up something left hanging elsewhere is not a tactic either. The
+    // refutation has to be a move rather than a helping. Measured over a real
+    // game, this keeps five of every six clear-cut refutations and throws away
+    // exactly the free lunches.
+    if (kind === 'grab') continue;
 
-    return { uci, cpLoss: lossOf(best, candidate) };
+    // Every probe is spent whether or not the first candidate passed, so there
+    // is nothing to save by stopping at the first one that does -- and plenty to
+    // gain by looking at the rest. Taking the first meant the choice between a
+    // forced mate and a vaguely better position came down to shuffle order.
+    const rank = PUNISH_RANK[kind];
+    if (!chosen || rank > chosen.rank || (rank === chosen.rank && margin > chosen.margin)) {
+      chosen = { candidate: { uci, cpLoss: lossOf(best, candidate) }, rank, margin };
+    }
+    // Nothing beats a forced mate, so stop paying for probes once one turns up.
+    if (kind === 'mate') break;
   }
-  return undefined;
+  return chosen?.candidate;
+}
+
+/**
+ * Choose which errors to spend a probe on, leaning towards the worse ones.
+ *
+ * A normal middlegame offers a dozen or more moves inside the band, and only
+ * five can be afforded. Drawing them uniformly means the bot mostly examines the
+ * mildest ones, because there are more of them -- so it kept finding errors that
+ * cost a pawn and answering them with something obvious, and the four-pawn
+ * disasters it could have played went unexamined.
+ *
+ * Weight is the square of the loss, which is enough to make the bottom of the
+ * band the exception rather than the rule without ever excluding it. The moves
+ * that walk into a forced mate live at the very top of the band, so this is also
+ * what makes mate traps turn up at all.
+ */
+function sampleByCost(
+  band: readonly PvLine[],
+  best: PvLine,
+  count: number,
+  random: () => number,
+): PvLine[] {
+  const left = [...band];
+  const chosen: PvLine[] = [];
+  while (chosen.length < count && left.length > 0) {
+    const weights = left.map(line => (lossOf(best, line) / 100) ** 2);
+    const pick = weighted(left, weights, random);
+    if (!pick) break;
+    chosen.push(pick);
+    left.splice(left.indexOf(pick), 1);
+  }
+  return chosen;
 }
 
 /**

@@ -82,9 +82,19 @@ let erred = 0;
 
 for (let game = 0; game < GAMES; game++) {
   let fen = INITIAL_FEN;
+  // The bot plays one side and is asked to err; the other side plays the best
+  // move. Letting both sides blunder produces positions no game ever reaches --
+  // lopsided ones, where every "error" is meaningless and every "refutation" is
+  // just the best move in a position that was already won. The first version of
+  // this script did that, and its numbers were worthless.
+  const botPlays = game % 2 === 0 ? 0 : 1;
   for (let ply = 0; ply < PLIES; ply++) {
     const lines = await search(fen, SEARCH);
     if (lines.length === 0) break;
+    if (ply % 2 !== botPlays) {
+      fen = fenAfter(fen, lines[0].moves[0]);
+      continue;
+    }
     asked++;
     const move = await chooseMove(policy, fen, lines, { wantsError: true, acpl: 0 });
     if (!move) break;

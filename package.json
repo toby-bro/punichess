@@ -21,7 +21,8 @@
     "test:engine": "node scripts/smoke.mjs",
     "check": "npm run lint && npm run typecheck && npm run test",
     "bench": "node scripts/timing.mjs",
-    "bot:kinds": "node scripts/blunderkind.mjs"
+    "bot:kinds": "node scripts/blunderkind.mjs",
+    "bot:why": "node scripts/blunderwhy.mjs"
   },
   "license": "GPL-3.0-or-later",
   "type": "module",

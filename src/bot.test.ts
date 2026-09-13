@@ -11,11 +11,20 @@ import {
   pickBlunder,
   pickHonest,
   pickMateTrap,
+  punishKind,
 } from './bot.ts';
-import { INITIAL_FEN, positionHash } from './chess.ts';
+import { INITIAL_FEN, fenAfter, positionHash } from './chess.ts';
 import { DECIDED_CP } from './referee.ts';
 import { DEFAULT_SETTINGS, type Settings, parseSettings } from './settings.ts';
 import { type PvLine, mateToCp } from './uci.ts';
+
+const line = (move: string, cp: number): PvLine => ({
+  multipv: 1,
+  cp,
+  mate: undefined,
+  depth: 18,
+  moves: [move],
+});
 
 const search = (...moves: [string, number][]): PvLine[] =>
   moves.map(([move, cp], index) => ({
@@ -435,5 +444,133 @@ describe('repeating when losing', () => {
       });
       assert.notEqual(move?.uci, 'f6g8');
     }
+  });
+});
+
+describe('punishKind', () => {
+  // Bare positions rather than openings: the classification is about the move,
+  // and a stripped board makes what is defended and what is not unarguable.
+  const rookEndgame = '4k3/8/8/8/8/8/8/R3K3 w - - 0 1';
+  const looseRook = '4k3/8/8/8/8/8/r7/R3K3 w - - 0 1';
+  const italian = 'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3';
+
+  it('calls a forced mate a mate whatever the move looks like', () => {
+    assert.equal(punishKind(rookEndgame, mateLine('a1a8', 3, 1)), 'mate');
+  });
+
+  it('picks out a check that captures nothing', () => {
+    // Ra8+. This is the shape the ranking exists for: a discovered or double
+    // check wins material without touching anything on the way.
+    assert.equal(punishKind(rookEndgame, line('a1a8', 400)), 'check');
+  });
+
+  it('calls a move that takes nothing and checks nothing quiet', () => {
+    assert.equal(punishKind(rookEndgame, line('e1e2', 0)), 'quiet');
+  });
+
+  it('separates a capture into a defended square from a free lunch', () => {
+    // Nxe5 walks into ...Nxe5: taking is a decision, so it is a tactic.
+    assert.equal(punishKind(italian, line('f3e5', 200)), 'sac');
+    // Rxa2 takes a rook nothing is defending. There is nothing to see.
+    assert.equal(punishKind(looseRook, line('a1a2', 500)), 'grab');
+  });
+});
+
+describe('pickBlunder ranking', () => {
+  // Two errors in the band. Which one is offered used to come down to shuffle
+  // order; it should come down to which one teaches something.
+  const wide = search(['e2e4', 30], ['e2e3', -120], ['d2d3', -130], ['a2a3', -140]);
+  const [best] = wide;
+  assert.ok(best);
+
+  it('prefers a forced mate to a merely good position', async () => {
+    // e3 is answered by a crushing but ordinary move; a3 hands over mate in 2.
+    const probe: Search = fen =>
+      Promise.resolve(
+        // After a3 it is Black to move with a mate; after anything else, not.
+        fen.startsWith('rnbqkbnr/pppppppp/8/8/8/P7/')
+          ? [mateLine('d8h4', 2, 1), line('b8c6', 0)]
+          : search(['d7d5', 300], ['b8c6', 20]),
+      );
+    const found = await pickBlunder(policy({ probe, random: () => 0.5 }), INITIAL_FEN, best, wide);
+    assert.ok(found);
+    assert.equal(found.uci, 'a2a3', 'the mate should win over the good position');
+  });
+
+  it('still returns something when nothing is a mate', async () => {
+    const found = await pickBlunder(
+      policy({ probe: replying(['d7d5', 300], ['b8c6', 20]), random: () => 0.5 }),
+      INITIAL_FEN,
+      best,
+      wide,
+    );
+    assert.ok(found, 'a ranked search must not become a pickier one');
+  });
+
+  it('does not spend probes once a mate has turned up', async () => {
+    let count = 0;
+    const probe: Search = () => {
+      count++;
+      return Promise.resolve([mateLine('d8h4', 2, 1), line('b8c6', 0)]);
+    };
+    await pickBlunder(policy({ probe, random: () => 0.5 }), INITIAL_FEN, best, wide);
+    assert.equal(count, 1, 'nothing beats a mate, so there is nothing left to look for');
+  });
+});
+
+describe('which errors get probed', () => {
+  it('leans towards the costly ones without ever excluding the rest', async () => {
+    // Fourteen mild errors and one disaster. Drawn uniformly the disaster is
+    // looked at about a third of the time; the point of weighting by cost is
+    // that it is looked at nearly always, because that is where the mates and
+    // the real tactics live.
+    const mild = [
+      'a2a3',
+      'b2b3',
+      'c2c3',
+      'd2d3',
+      'f2f3',
+      'g2g3',
+      'h2h3',
+      'a2a4',
+      'b2b4',
+      'c2c4',
+      'd2d4',
+      'f2f4',
+      'g2g4',
+      'h2h4',
+    ];
+    const disaster = 'b1a3';
+    const wide = [
+      ...search(['e2e4', 0]),
+      ...mild.map(move => line(move, -110)),
+      line(disaster, -400),
+    ];
+    const [best] = wide;
+    assert.ok(best);
+    const afterDisaster = fenAfter(INITIAL_FEN, disaster);
+
+    let probedTheDisaster = 0;
+    const runs = 60;
+    for (let seed = 1; seed <= runs; seed++) {
+      let n = seed;
+      const random = (): number => {
+        n = (n * 1103515245 + 12345) % 2147483648;
+        return n / 2147483648;
+      };
+      const probe: Search = fen => {
+        if (fen === afterDisaster) probedTheDisaster++;
+        // Nothing is punishable, so every drawn candidate is probed and what is
+        // being measured is the draw itself.
+        return Promise.resolve(search(['d7d5', 10], ['b8c6', 5]));
+      };
+      await pickBlunder(policy({ probe, random }), INITIAL_FEN, best, wide);
+    }
+    const share = probedTheDisaster / runs;
+    // Uniform would be 5/15 = 33%.
+    assert.ok(
+      share > 0.6,
+      `the worst move was probed in only ${(share * 100).toFixed(0)}% of runs`,
+    );
   });
 });
