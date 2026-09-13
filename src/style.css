@@ -437,10 +437,25 @@ button:disabled {
   margin-bottom: 10px;
 }
 
-/* The game controls in this row match every other button on the page. */
-.moves-controls button {
-  min-height: 44px;
-  padding: 8px 12px;
+/*
+ * Below the fold, so height here is free and width is not.
+ *
+ * These rows had to scroll sideways to fit a phone, which hides controls behind
+ * a gesture nobody thinks to make on a row that looks complete. They wrap onto a
+ * second line instead: nothing below the board is competing for the space, and a
+ * control you can see beats one you could reach.
+ */
+.moves-controls,
+.bar {
+  flex-wrap: wrap;
+}
+
+.moves-controls button,
+.bar button {
+  min-height: 36px;
+  min-width: 0;
+  padding: 7px 11px;
+  font-size: 14px;
 }
 
 /* Show more is not one of them: it acts on the list above it rather than on the
@@ -657,7 +672,27 @@ button:disabled {
   font-size: 14px;
   color: var(--dim);
   cursor: pointer;
-  white-space: nowrap;
+}
+
+/*
+ * A switch says what it does in words, and the words are what make it wide.
+ *
+ * "Evaluate new positions" on one line is a third of a phone's width for a
+ * control that is read once and then ignored. Two short lines beside the switch
+ * cost no height at all -- the switch is 24px and a line of this is 15 -- and
+ * they buy back more width than anything else in these rows.
+ */
+.switch-label {
+  /* Narrow enough that "Save on new" actually breaks -- at 7em it fit on one
+     line and bought nothing. */
+  max-width: 5.2em;
+  line-height: 1.15;
+}
+
+/* This one is long enough that 5.2em would give it three lines, which is taller
+   than the switch beside it. Two is the point where the height stops being free. */
+#evaluate-box .switch-label {
+  max-width: 7.5em;
 }
 
 .switch[hidden] {
