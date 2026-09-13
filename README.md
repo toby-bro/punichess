@@ -136,6 +136,28 @@ docker compose --profile tools run --rm serve    # serve ./dist like a real host
 
 To play on the phone, put it on the same network and open `http://<pc-ip>:8888`.
 
+### Publishing it
+
+The site is built for a custom domain at the root, and `public/CNAME` names it.
+That file matters: an Actions deploy publishes an artifact rather than a branch,
+so a CNAME that is not part of the build is not part of the site, and GitHub
+unsets the domain on the next deploy.
+
+For a subdomain, DNS needs one record — a CNAME, not the A records an apex
+domain uses:
+
+```
+punichess   CNAME   <your-github-username>.github.io.
+```
+
+It points at GitHub's Pages host, not at the repository; the repository is
+identified by the CNAME file in the published site. Then set the same name under
+Settings → Pages → Custom domain, and tick _Enforce HTTPS_ once the certificate
+has been issued, which takes a few minutes after DNS resolves.
+
+To serve from `<user>.github.io/<repo>/` instead, delete `public/CNAME` and set a
+`BASE_PATH` repository variable of `/<repo>/`.
+
 ### Installing on the phone
 
 Build, publish `dist/` as a static site, open it in Chrome, and use _Add to home

@@ -25,8 +25,14 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
-      # BASE must match the site's path. Leave as "/" for a custom domain or a
-      # user page; set to "/<repo>/" for a project page.
+      # BASE must match the site's path. A custom domain serves from the root,
+      # so leave BASE_PATH unset; set it to "/<repo>/" only for a project page
+      # on github.io.
+      #
+      # The custom domain itself lives in public/CNAME rather than in the repo
+      # settings alone: an Actions deploy publishes an artifact instead of a
+      # branch, so a CNAME file that is not in the build is not in the site, and
+      # GitHub drops the domain on the next deploy.
       - run: npm run build
         env:
           BASE: ${{ vars.BASE_PATH || '/' }}
