@@ -383,12 +383,13 @@ it. The script is not part of the build: it needs `rsvg-convert`, which nothing
 else here needs, and the icons change about once a year, so the PNGs are
 committed and neither the build nor a contributor has to have the tool.
 
-There are two drawings rather than one file used twice, and the maskable one is
-fitted to a tighter circle than the maskable spec asks for. The launcher promises
-the circle inscribed in the middle 80%; Android's splash screen shows only the
-**inner two thirds** of an adaptive icon that has a background. Sized to the first
-it looks right in the app list and loses its ears the moment the app opens, so it
-is sized to the second and survives both.
+There are two drawings rather than one file used twice, and both fill about 88%
+of their canvas. Sizing the maskable one by the rules instead — the circle
+inscribed in the middle 80%, or the inner two thirds the Android splash screen
+uses — gives 72% and 60%, and at those sizes the knight sits adrift in a field of
+background everywhere the icon is drawn large: the splash screen, the recents
+view. A circular mask takes the ends of the pool and nothing else, and a pool
+that runs past the edge of the frame is not a defect.
 
 It also ships at 1024. The splash canvas is 240dp, which is 720px on a 3x phone
 and more on a 4x one, so a 512 icon is upscaled exactly where the icon is
