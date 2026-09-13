@@ -237,6 +237,12 @@ main {
  * away. The rest turns off the things a browser does to text, which none of
  * this is.
  *
+ * Chessground's own `cursor: pointer` on the board stays. It was taken off once,
+ * on the grounds that nobody needs telling a chessboard can be played on -- but
+ * the cursor is not there to say the pieces move. It is there for the empty
+ * square you click to put a selected piece back down, which is the one thing on
+ * the board that does not look like it does anything.
+ *
  * The cost is that dragging a piece up or down scrolls instead of dragging it.
  * Tapping the piece and then the square it is going to always works, which is
  * how most people play on a phone in any case, and a board you cannot scroll
