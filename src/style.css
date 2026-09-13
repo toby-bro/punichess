@@ -337,6 +337,38 @@ cg-board square.premove-dest:hover {
 }
 
 /*
+ * The number on an arrow.
+ *
+ * Chessground draws it as a circle with a text in it, and sizes the type as
+ * `0.4 * 0.75 ** text.length` of a square. Each character shrinks the type by a
+ * quarter and it compounds, so on a phone board "-2.0" comes out at about five
+ * and a half pixels inside a circle nearly eighteen across: mostly empty circle,
+ * and a number nobody can read. The circle never changes size, so the shrinking
+ * buys nothing either.
+ *
+ * One size for every label instead, and a bigger circle to put it in. That is
+ * only safe because every label this app produces is at most four characters --
+ * see LEGIBLE_LABEL in shapes.ts, which is tested.
+ *
+ * Lengths are in px, which inside an svg means user units, and a user unit here
+ * is one square. So these scale with the board and not with the screen.
+ */
+.cg-wrap .cg-custom-svgs circle {
+  r: 0.31px;
+  fill-opacity: 1;
+  stroke-width: 0.045px;
+  stroke-opacity: 1;
+}
+
+.cg-wrap .cg-custom-svgs text {
+  font-size: 0.26px;
+  /* Centred on the circle rather than sitting on a baseline chessground placed
+     for a much smaller font. */
+  dominant-baseline: central;
+  transform: translateY(-0.045px);
+}
+
+/*
  * The evaluation bar, above the board and across it.
  *
  * Its contents are only ever filled in with the review open -- during a game it

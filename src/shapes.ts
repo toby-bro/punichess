@@ -22,15 +22,14 @@ export interface Cost {
 /**
  * The longest label that can still be read.
  *
- * Chessground draws every label in a circle of fixed size and picks the font as
- * `0.4 * 0.75 ** text.length` -- so each extra character shrinks the type by a
- * quarter, compounding. Four characters is comfortable, five is small, and
- * seven ("−2.0 ×2") is a third the size of four inside the same circle: present,
- * legible to nobody, and indistinguishable from a rendering fault.
+ * The circle a label sits in is a fixed fraction of a square and style.css
+ * overrides chessground's own type size to fill it. That override is one size
+ * for every label, so what fits is a fixed number of characters rather than a
+ * curve: four fills the circle and five runs out of it.
  *
  * Anything a label wants to say beyond this has to be said some other way.
  */
-export const LEGIBLE_LABEL = 5;
+export const LEGIBLE_LABEL = 4;
 
 export const square = (uci: string, end: 0 | 2): Key => uci.slice(end, end + 2) as Key;
 
@@ -80,6 +79,21 @@ export function costLabel(cost: Cost): string {
   const pawns = cost.cpLoss / 100;
   const tenths = pawns.toFixed(1);
   return `−${tenths.length > 3 ? Math.round(pawns).toFixed(0) : tenths}`;
+}
+
+/**
+ * What an engine line is worth, short enough to sit on an arrow.
+ *
+ * The same numbers the evaluation bar shows, with one decimal rather than two
+ * and whole pawns once there are ten of them. Two decimals is six characters
+ * for a position that is already lost, and that precision answers a question
+ * nobody looking at an arrow is asking.
+ */
+export function evalLabel(cp: number, mate?: number): string {
+  if (mate !== undefined) return `#${mate > 0 ? '' : '-'}${Math.abs(mate)}`;
+  const pawns = cp / 100;
+  const text = Math.abs(pawns) >= 9.95 ? Math.round(pawns).toFixed(0) : pawns.toFixed(1);
+  return pawns > 0 ? `+${text}` : text;
 }
 
 /**

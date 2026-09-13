@@ -3,7 +3,15 @@ import { test } from 'node:test';
 
 import type { DrawShape } from 'chessground/draw';
 
-import { LEGIBLE_LABEL, arrow, costLabel, readable, rememberedArrow, square } from './shapes.ts';
+import {
+  LEGIBLE_LABEL,
+  arrow,
+  costLabel,
+  evalLabel,
+  readable,
+  rememberedArrow,
+  square,
+} from './shapes.ts';
 
 const labels = (shapes: readonly DrawShape[]): (string | undefined)[] =>
   shapes.map(shape => shape.label?.text);
@@ -118,4 +126,26 @@ test('a remembered mistake looks the same however often it was made', () => {
   const once = rememberedArrow('g1f3', { cpLoss: 200 });
   assert.deepEqual(once.label, { text: '−2.0' });
   assert.equal(once.modifiers, undefined);
+});
+
+test('an engine evaluation fits an arrow too', () => {
+  assert.equal(evalLabel(35), '+0.3');
+  assert.equal(evalLabel(-120), '-1.2');
+  assert.equal(evalLabel(0), '0.0');
+  // Two decimals is what the bar shows; six characters is not what an arrow can.
+  assert.equal(evalLabel(1234), '+12');
+  assert.equal(evalLabel(-12_345), '-123');
+  assert.equal(evalLabel(0, 3), '#3');
+  assert.equal(evalLabel(0, -12), '#-12');
+
+  for (const cp of [0, 1, 35, 994, 999, 1000, 9999, -35, -999, -12_345]) {
+    const text = evalLabel(cp);
+    assert.ok(
+      text.length <= LEGIBLE_LABEL,
+      `${text} is ${String(text.length)} characters, over ${String(LEGIBLE_LABEL)}`,
+    );
+  }
+  for (const mate of [1, 9, 12, -1, -12]) {
+    assert.ok(evalLabel(0, mate).length <= LEGIBLE_LABEL);
+  }
 });

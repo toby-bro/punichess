@@ -48,7 +48,7 @@ import { MistakeMemory } from './memory.ts';
 import { mountMoves } from './moves-view.ts';
 import { PgnImportError, fromPgn, pgnDate, toPgn } from './pgn.ts';
 import { watchForUpdates } from './updates.ts';
-import { arrow, costLabel, readable, rememberedArrow, square } from './shapes.ts';
+import { arrow, costLabel, evalLabel, readable, rememberedArrow, square } from './shapes.ts';
 import {
   type Verdict,
   isError,
@@ -485,7 +485,7 @@ async function main(): Promise<void> {
     return known
       .slice(0, REVEAL_ARROWS)
       .map((line, rank) =>
-        arrow(line.moves[0], rank === 0 ? 'green' : 'blue', formatEval(line.cp, line.mate)),
+        arrow(line.moves[0], rank === 0 ? 'green' : 'blue', evalLabel(line.cp, line.mate)),
       );
   }
 
