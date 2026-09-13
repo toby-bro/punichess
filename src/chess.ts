@@ -9,7 +9,7 @@ import { kingAttacks } from 'chessops/attacks';
 import { chessgroundDests } from 'chessops/compat';
 import { INITIAL_FEN, makeFen, parseFen } from 'chessops/fen';
 import { makeSan, parseSan } from 'chessops/san';
-import type { Color, Move } from 'chessops/types';
+import type { Color, Move, Role } from 'chessops/types';
 import { makeSquare, makeUci, parseUci } from 'chessops/util';
 
 export { INITIAL_FEN };
@@ -124,7 +124,24 @@ export interface MoveKind {
    * sacrifice rather than picking up something free.
    */
   readonly defended: boolean;
+  /**
+   * What the move takes, in centipawns, or 0 if it takes nothing.
+   *
+   * Rough on purpose: it answers "is that a piece or a pawn", which is the only
+   * question anyone asks of it.
+   */
+  readonly value: number;
 }
+
+/** What each piece is worth, for the one question above and nothing else. */
+const VALUE: Record<Role, number> = {
+  pawn: 100,
+  knight: 300,
+  bishop: 320,
+  rook: 500,
+  queen: 900,
+  king: 0,
+};
 
 /**
  * What a move does, in the terms needed to tell a tactic from a free lunch.
@@ -139,12 +156,19 @@ export function moveKind(fen: string, uci: string): MoveKind {
   const target = 'to' in move ? move.to : undefined;
   const capture = target !== undefined && before.board.occupied.has(target);
 
+  const taken = target === undefined ? undefined : before.board.get(target);
+
   const after = position(fen);
   after.play(move);
   const defended =
     target !== undefined && [...after.allDests()].some(([, targets]) => targets.has(target));
 
-  return { capture, check: after.isCheck(), defended };
+  return {
+    capture,
+    check: after.isCheck(),
+    defended,
+    value: taken ? VALUE[taken.role] : 0,
+  };
 }
 
 /** Legal destinations per origin square, in the shape chessground wants. */

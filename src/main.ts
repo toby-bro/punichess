@@ -75,6 +75,14 @@ import { GameTree } from './tree.ts';
 import type { PvLine } from './uci.ts';
 
 /** How many moves of the best line the reveal lets you step through. */
+/**
+ * How long a reply already in the tree takes to arrive.
+ *
+ * Long enough to read as a move being played rather than the board jumping, and
+ * far shorter than a real think, because nothing is being thought about.
+ */
+const REPLAY_MS = 220;
+
 const REVEAL_DEPTH = 8;
 /** How many alternatives to draw on the board during a reveal. */
 const REVEAL_ARROWS = 3;
@@ -926,7 +934,32 @@ async function main(): Promise<void> {
       return;
     }
 
+    /*
+     * If it has already answered this position, it answers it the same way.
+     *
+     * Walking back through a game and replaying your own moves should retrace
+     * the line, not open a new one beside it. Asking the engine again would
+     * produce a different reply -- deliberate errors are drawn at random and
+     * positions already visited are avoided on purpose -- and every step back
+     * would fork the game into a branch nobody asked for.
+     *
+     * Only when you ask for a different move, which is what `exclude` means,
+     * does it think again.
+     */
     const mine = generation;
+    const answered = exclude === undefined ? tree.mainChild(tree.current) : undefined;
+    if (answered?.move && answered.move.by !== you) {
+      await sleep(REPLAY_MS);
+      if (mine !== generation) return;
+      tree.goTo(answered.id);
+      thinking = false;
+      status(liveStatus());
+      render();
+      reviewView?.setSelected(tree.current.id);
+      board.playPremove();
+      return;
+    }
+
     const startedAt = Date.now();
     try {
       const fen = tree.fen;
@@ -946,6 +979,7 @@ async function main(): Promise<void> {
           : {
               wantsError: wantsError(),
               acpl: stats.acpl('bot'),
+              lastMove: tree.current.move?.uci,
               exclude,
               avoid: seenPositions(),
             },

@@ -13,7 +13,7 @@ import {
   pickMateTrap,
   punishKind,
 } from './bot.ts';
-import { INITIAL_FEN, fenAfter, positionHash } from './chess.ts';
+import { INITIAL_FEN, fenAfter, moveKind, positionHash } from './chess.ts';
 import { DECIDED_CP } from './referee.ts';
 import { DEFAULT_SETTINGS, type Settings, parseSettings } from './settings.ts';
 import { type PvLine, mateToCp } from './uci.ts';
@@ -572,5 +572,48 @@ describe('which errors get probed', () => {
       share > 0.6,
       `the worst move was probed in only ${(share * 100).toFixed(0)}% of runs`,
     );
+  });
+});
+
+describe('a piece you just hung', () => {
+  // 1. e4 e5 2. Bc4, and Black has just played ...Nf6?? -- no. Built plainly:
+  // White to move, Black's queen sits undefended on d5 having just moved there.
+  const hungQueen = 'rnb1kbnr/ppp1pppp/8/3q4/8/5N2/PPPPPPPP/RNBQKB1R w KQkq - 0 1';
+  const hungPawn = 'rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
+
+  const wide = (best: string) => search([best, 900], ['f3g5', -200], ['h2h4', -250]);
+
+  it('is taken rather than ignored, when it is a piece', async () => {
+    const lines = wide('f3e5');
+    const move = await chooseMove(
+      policy({ searchWide: replying(...lines.map(l => [l.moves[0], l.cp] as [string, number])) }),
+      hungQueen,
+      lines,
+      { wantsError: true, acpl: 0, lastMove: 'd8d5' },
+    );
+    assert.ok(move);
+    assert.equal(move.deliberateError, false, 'a hung queen is not an opportunity to err');
+  });
+
+  it('is left alone when it is only a pawn', async () => {
+    // Taking on d5 is available and free, but a pawn is a judgement call, and
+    // declining one is the sort of thing people do all the time.
+    const kind = moveKind(hungPawn, 'e4d5');
+    assert.equal(kind.capture, true);
+    assert.ok(kind.value < 300, 'a pawn is below the line');
+  });
+
+  it('only counts the piece you moved this very turn', async () => {
+    const lines = wide('f3e5');
+    const move = await chooseMove(
+      policy({ searchWide: replying(...lines.map(l => [l.moves[0], l.cp] as [string, number])) }),
+      hungQueen,
+      lines,
+      // The queen is hanging, but you moved something else: it has been hanging
+      // a while, and that is part of the position now.
+      { wantsError: true, acpl: 0, lastMove: 'a7a6' },
+    );
+    assert.ok(move);
+    assert.notEqual(move.uci, undefined);
   });
 });

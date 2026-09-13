@@ -47,6 +47,18 @@ export const MAX_PROBES = 5;
  */
 export const HOLD_FOR_DRAW_CP = -50;
 
+/**
+ * The least a hanging piece can be worth before the bot has to take it.
+ *
+ * A bot that ignores a hung pawn to play an error of its own is fine -- that is
+ * a judgement call a person makes all the time. A bot that ignores a hung knight
+ * is not making a mistake, it is refusing to play chess, and it reads as the
+ * program being broken rather than as the bot being fallible.
+ *
+ * A minor piece is the line: below it, anything goes.
+ */
+export const FREE_PIECE_CP = 300;
+
 /** Analyse a position. Injected so the policy can be tested without an engine. */
 export type Search = (fen: string) => Promise<readonly PvLine[]>;
 
@@ -76,6 +88,10 @@ export interface MoveContext {
   readonly wantsError: boolean;
   /** The bot's average centipawn loss so far, which steers honest play. */
   readonly acpl: number;
+  /**
+   * The move you just made, so the bot can see what you left where.
+   */
+  readonly lastMove?: string | undefined;
   /**
    * Moves not to play, so asking for a different move in a position actually
    * gives you one.
@@ -170,6 +186,17 @@ export async function chooseMove(
   // A side that is losing is entitled to repeat.
   const avoid = best.cp <= HOLD_FOR_DRAW_CP ? new Set<number>() : (context.avoid ?? new Set());
 
+  // Something big has just been left hanging on the square you moved it to, and
+  // the best move is to take it. Take it. Declining is not an error anyone
+  // makes, and being handed a piece back is not a lesson.
+  if (
+    context.wantsError &&
+    context.lastMove !== undefined &&
+    takesWhatYouHung(fen, best, context)
+  ) {
+    return { uci: best.moves[0], kind: 'quiet', deliberateError: false, cpLoss: 0 };
+  }
+
   if (context.wantsError && Math.abs(best.cp) <= DECIDED_CP) {
     // One wide search serves both kinds of error, so erring costs a single
     // extra think rather than one per candidate.
@@ -197,6 +224,26 @@ export async function chooseMove(
   );
   if (!quiet) return undefined;
   return { uci: quiet, kind: 'quiet', deliberateError: false, cpLoss: honestLoss(lines, quiet) };
+}
+
+/**
+ * Whether the best move simply takes a piece you just hung, undefended.
+ *
+ * Only the piece you have this moment moved: a knight that has been hanging for
+ * six moves is part of the position, and leaving it there another move is an
+ * ordinary thing to do badly.
+ */
+function takesWhatYouHung(fen: string, best: PvLine, context: MoveContext): boolean {
+  const { lastMove } = context;
+  if (lastMove === undefined) return false;
+  const uci = best.moves[0];
+  if (destOf(uci) !== destOf(lastMove)) return false;
+  try {
+    const kind = moveKind(fen, uci);
+    return kind.capture && !kind.defended && kind.value >= FREE_PIECE_CP;
+  } catch {
+    return false;
+  }
 }
 
 /**
