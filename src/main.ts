@@ -21,7 +21,13 @@ import {
   turnOf,
 } from './chess.ts';
 import { Engine, isCancelled } from './engine.ts';
-import { GameLibrary, type SavedEval, restoreTree, serialiseTree } from './library.ts';
+import {
+  GameLibrary,
+  type NewGame,
+  type SavedEval,
+  restoreTree,
+  serialiseTree,
+} from './library.ts';
 import { mountLibrary } from './library-view.ts';
 import { MistakeMemory } from './memory.ts';
 import { mountMoves } from './moves-view.ts';
@@ -109,6 +115,7 @@ const buttons = {
   pgnImport: element('pgn-import'),
   pgnCopy: element('pgn-copy'),
   forget: element('forget'),
+  expandMoves: element('expand-moves'),
   saveGame: element('save-game'),
 };
 
@@ -232,6 +239,13 @@ async function main(): Promise<void> {
    */
   let savedEvals = new Map<number, SavedEval>();
   /**
+   * The saved game this one *is*, when it came from the library.
+   *
+   * While set, playing on keeps the stored copy in step, so a branch you explore
+   * after reopening a game is still there the next time you open it.
+   */
+  let openGameId: string | undefined;
+  /**
    * Bumped whenever the world changes under a move in progress.
    *
    * Aborting a search is not enough on its own: the bot also waits out its
@@ -280,6 +294,7 @@ async function main(): Promise<void> {
     },
     onDelete: id => {
       library.remove(id);
+      if (openGameId === id) openGameId = undefined;
       games.render();
     },
     onFavourite: (id, favourite) => {
@@ -634,6 +649,7 @@ async function main(): Promise<void> {
     tree = new GameTree();
     cache.clear();
     savedEvals = new Map();
+    openGameId = undefined;
     stats.reset();
     // Last game's mistakes belong to last game. Openings repeat, and painting
     // them onto a board you have only just set up says nothing about this game.
@@ -743,6 +759,7 @@ async function main(): Promise<void> {
     if (playedAnyway) tree.markPlayedAnyway();
     mode = { kind: 'play' };
     updateScore();
+    syncSaved();
     void botTurn();
   }
 
@@ -769,6 +786,8 @@ async function main(): Promise<void> {
       mateIn: verdict.mateIn,
       mateLater: verdict.mateLater,
     });
+    // The mistake is part of the game's record, so the stored copy wants it too.
+    syncSaved();
 
     const forced = verdict.missesMate || verdict.hangsMate;
     status(
@@ -822,6 +841,7 @@ async function main(): Promise<void> {
     tree.markPlayedAnyway(punish);
     punishFrom = punish ? node.id : undefined;
     mode = { kind: 'play' };
+    syncSaved();
     status(punish ? 'Right — watch how that gets punished.' : 'Playing it anyway.');
     void botTurn();
   }
@@ -898,6 +918,7 @@ async function main(): Promise<void> {
       tree.play(move.uci, { deliberateError: move.deliberateError });
       thinking = false;
       updateScore();
+      syncSaved();
       if (!outcomeOf(tree.fen)) warm(tree.fen);
       status(liveStatus());
       render();
@@ -1013,17 +1034,12 @@ async function main(): Promise<void> {
 
   // ------------------------------------------------------------ saved games
 
-  /** Store the game as it stands, evaluations and all. */
-  function saveGame(): void {
-    if (tree.root.children.length === 0) {
-      status('Nothing to save yet.');
-      return;
-    }
+  /** The game as it stands, in the shape the library stores. */
+  function currentGame(): NewGame {
     const yours = stats.summary('you');
     const theirs = stats.summary('bot');
     const rootEval = evalOf(tree.root.fen);
-
-    const saved = library.save({
+    return {
       name: defaultName(),
       playedAs: you,
       settings,
@@ -1038,10 +1054,40 @@ async function main(): Promise<void> {
       start: tree.root.fen,
       ...(rootEval ? { rootEval } : {}),
       nodes: serialiseTree(tree, node => evalOf(node.fen) ?? savedEvals.get(node.id)),
+      // Every position you were stopped in, so reopening the game draws them
+      // back onto the board exactly where they happened.
       mistakes: memory.toStored(),
-    });
+    };
+  }
+
+  /** Store the game as it stands, evaluations and all. */
+  function saveGame(): void {
+    if (tree.root.children.length === 0) {
+      status('Nothing to save yet.');
+      return;
+    }
+    const saved = library.save(currentGame());
+    // From here on it keeps itself up to date.
+    openGameId = saved.id;
     games.render();
     status(`Saved as “${saved.name}”. Rename it under Saved games.`);
+  }
+
+  /**
+   * Keep the stored copy in step with the game being played.
+   *
+   * Called whenever the game changes rather than on a timer: a branch explored
+   * after reopening a game should be there next time without anyone having to
+   * remember to press save.
+   */
+  function syncSaved(): void {
+    if (openGameId === undefined || tree.root.children.length === 0) return;
+    if (!library.update(openGameId, currentGame())) {
+      // It was deleted while being played; stop pretending it is still there.
+      openGameId = undefined;
+      return;
+    }
+    games.render();
   }
 
   /** What a position is worth, from whatever the engine happens to have said. */
@@ -1068,6 +1114,7 @@ async function main(): Promise<void> {
     const restored = restoreTree(game);
     tree = restored.tree;
     savedEvals = restored.evals;
+    openGameId = game.id;
     // The searches behind a stored game are gone; only its numbers came back.
     cache.clear();
     stats.reset();
@@ -1116,6 +1163,7 @@ async function main(): Promise<void> {
       // bookkeeping applies to it.
       cache.clear();
       savedEvals = new Map();
+      openGameId = undefined;
       stats.reset();
       memory.clear();
       revealed.clear();
@@ -1233,6 +1281,15 @@ async function main(): Promise<void> {
     buttons.pgnExport.onclick = exportPgn;
     buttons.pgnImport.onclick = () => {
       importPgn(pgnText.value);
+    };
+    buttons.expandMoves.onclick = () => {
+      const movesEl = element('moves');
+      const expanded = movesEl.classList.toggle('expanded');
+      buttons.expandMoves.textContent = expanded ? 'Show less' : 'Show more';
+      buttons.expandMoves.setAttribute('aria-expanded', String(expanded));
+      // Bring the current move back into view: the box just changed height
+      // underneath it.
+      moves.render();
     };
     buttons.forget.onclick = () => {
       memory.clear();

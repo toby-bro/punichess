@@ -268,6 +268,30 @@ export class GameLibrary {
     this.#write();
   }
 
+  /**
+   * Bring a saved game up to date with how it is being played now.
+   *
+   * Keeps what is yours -- its name, and whether it is a favourite -- and
+   * replaces what is the game's. Touching it moves it to the front, so the list
+   * reads most recently played first and a game being played is never the one
+   * purged to make room.
+   */
+  update(id: string, game: NewGame, now = Date.now()): SavedGame | undefined {
+    const existing = this.#games.find(saved => saved.id === id);
+    if (!existing) return undefined;
+
+    const updated: SavedGame = {
+      ...game,
+      id: existing.id,
+      name: existing.name,
+      saved: now,
+      ...(existing.favourite === true ? { favourite: true } : {}),
+    };
+    this.#games = [updated, ...this.#games.filter(saved => saved.id !== id)];
+    this.#write();
+    return updated;
+  }
+
   rename(id: string, name: string): void {
     const trimmed = name.trim();
     if (trimmed.length === 0) return;

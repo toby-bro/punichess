@@ -373,3 +373,64 @@ describe('a game carries its own mistakes', () => {
     assert.equal(new GameLibrary(storage).find(saved.id)?.mistakes, undefined);
   });
 });
+
+describe('keeping a saved game up to date', () => {
+  it('replaces the game and leaves the name alone', () => {
+    const shelf = new GameLibrary(fakeStorage());
+    const saved = shelf.save({ ...gameFrom(branched()), name: 'my game' });
+    shelf.rename(saved.id, 'Sicilian mess');
+
+    const longer = branched();
+    // branched() leaves the cursor on the short side line, so go to the start
+    // before running out along the main one.
+    longer.first();
+    longer.last();
+    longer.play('b8c6');
+    shelf.update(saved.id, { ...gameFrom(longer), name: 'ignored' });
+
+    const found = shelf.find(saved.id);
+    assert.ok(found);
+    assert.equal(found.name, 'Sicilian mess', 'the name is yours, not the game’s');
+    assert.equal(found.nodes.length, 5);
+  });
+
+  it('keeps a favourite a favourite', () => {
+    const shelf = new GameLibrary(fakeStorage());
+    const saved = shelf.save(gameFrom(branched()));
+    shelf.setFavourite(saved.id, true);
+    shelf.update(saved.id, gameFrom(branched()));
+    assert.equal(shelf.find(saved.id)?.favourite, true);
+  });
+
+  it('moves the game it touched to the front', () => {
+    const shelf = new GameLibrary(fakeStorage());
+    const first = shelf.save({ ...gameFrom(branched()), name: 'a' }, 1);
+    shelf.save({ ...gameFrom(branched()), name: 'b' }, 2);
+    shelf.update(first.id, gameFrom(branched()), 3);
+    assert.deepEqual(
+      shelf.games.map(game => game.name),
+      ['a', 'b'],
+      'the one being played is never the one purged to make room',
+    );
+  });
+
+  it('adds nothing for an id it does not know', () => {
+    const shelf = new GameLibrary(fakeStorage());
+    assert.equal(shelf.update('nope', gameFrom(branched())), undefined);
+    assert.equal(shelf.size, 0);
+  });
+
+  it('survives being reopened', () => {
+    const storage = fakeStorage();
+    const shelf = new GameLibrary(storage);
+    const saved = shelf.save(gameFrom(branched()));
+    const longer = branched();
+    // branched() leaves the cursor on the short side line, so go to the start
+    // before running out along the main one.
+    longer.first();
+    longer.last();
+    longer.play('b8c6');
+    shelf.update(saved.id, gameFrom(longer));
+    assert.equal(new GameLibrary(storage).find(saved.id)?.nodes.length, 5);
+  });
+});

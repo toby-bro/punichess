@@ -143,7 +143,7 @@ button:disabled {
 /* ------------------------------------------------------------- move tree */
 
 .moves {
-  margin: 0 0 10px;
+  margin: 0 0 4px;
   padding: 8px;
   /* Fixed, so branching does not push everything below it down the page. */
   height: 7em;
@@ -194,6 +194,26 @@ button:disabled {
   padding-left: 8px;
   border-left: 2px solid var(--edge);
   font-size: 14px;
+  color: var(--dim);
+}
+
+/* Expanded on request: a tree with a few branches in it does not fit in seven
+   lines, and dragging a scrollbar on a phone is no way to read one. */
+.moves.expanded {
+  height: auto;
+  max-height: none;
+  overflow-y: visible;
+}
+
+.moves-controls {
+  min-height: 0;
+  margin-bottom: 10px;
+}
+
+.moves-controls button {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 13px;
   color: var(--dim);
 }
 
