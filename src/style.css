@@ -55,6 +55,67 @@ main {
   aspect-ratio: 1;
 }
 
+/* chessground promotes every piece to its own compositing layer with
+   will-change: transform. A promoted layer is rasterised once into a texture
+   and then moved about, and with thirty-two of them a phone's compositor will
+   happily rasterise below device resolution to save memory -- which turns a
+   perfectly good vector into a blurry bitmap.
+
+   Promotion only while a piece is actually moving, which is the only time it
+   buys anything. */
+.cg-wrap piece {
+  will-change: auto;
+}
+
+.cg-wrap piece.anim,
+.cg-wrap piece.dragging {
+  will-change: transform;
+}
+
+/* The move dots are radial gradients whose colour stops have zero width. A
+   hard stop is not antialiased, so the edge of the circle comes out stepped.
+   Drawn as real circles instead: border-radius is antialiased everywhere. */
+cg-board square.move-dest,
+cg-board square.premove-dest,
+cg-board square.oc.move-dest,
+cg-board square.oc.premove-dest {
+  background: none;
+}
+
+cg-board square.move-dest::before,
+cg-board square.premove-dest::before {
+  content: '';
+  position: absolute;
+  inset: 37%;
+  border-radius: 50%;
+  background: rgb(20 85 30 / 0.5);
+  pointer-events: none;
+}
+
+cg-board square.premove-dest::before {
+  background: rgb(20 30 85 / 0.5);
+}
+
+/* On an occupied square a ring around the piece, rather than a dot beneath it. */
+cg-board square.oc.move-dest::before,
+cg-board square.oc.premove-dest::before {
+  inset: 3%;
+  background: none;
+  border: 0.9cqw solid rgb(20 85 30 / 0.45);
+}
+
+cg-board square.oc.premove-dest::before {
+  border-color: rgb(20 30 85 / 0.4);
+}
+
+cg-board square.move-dest:hover {
+  background: rgb(20 85 30 / 0.3);
+}
+
+cg-board square.premove-dest:hover {
+  background: rgb(20 30 85 / 0.2);
+}
+
 /* chessground positions coordinates for lichess's own wrapper: the ranks 20px
    above the board, the files 24px to the right of it, both at a fixed 9px. In a
    plain container that puts them outside the squares at a size that never
@@ -380,42 +441,81 @@ button:disabled {
   pointer-events: none;
 }
 
-/* The piece picker: two pieces from each set on a board-coloured square, which
-   is the only description of a piece set anybody can actually read. */
-.piece-sets {
+/* ------------------------------------------------------- board and pieces */
+
+#appearance-box {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  background: var(--raised);
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+#appearance-box summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.appearance-label {
+  margin: 10px 0 6px;
+  color: var(--dim);
+  font-size: 13px;
+}
+
+.swatches {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-bottom: 12px;
 }
 
-.piece-set {
+/* Both pickers show the thing itself rather than its name: "mpchess" and
+   "kiwen-suwi" describe nothing, a knight describes everything. */
+.swatches button {
+  min-width: 0;
+  min-height: 0;
+  padding: 3px;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.swatches button[aria-pressed='true'] {
+  border-color: #8fbf6f;
+}
+
+.piece-swatch {
   display: flex;
   align-items: center;
   gap: 2px;
-  min-width: 0;
-  min-height: 0;
-  padding: 4px 6px;
-  border: 2px solid transparent;
-  border-radius: 6px;
   background: #b58863;
-  cursor: pointer;
 }
 
-.piece-set[aria-pressed='true'] {
-  border-color: #6f8f5f;
-  background: #f0d9b5;
-}
-
-.piece-set piece {
+.swatches piece {
   position: static;
   display: block;
-  width: 28px;
-  height: 28px;
+  width: 60px;
+  height: 60px;
   background-size: contain;
   background-position: center;
   background-repeat: no-repeat;
   pointer-events: none;
+}
+
+/* Four squares of a real board with a real piece standing on one, so the board
+   and the pieces can be judged together instead of one at a time. The tile is
+   two squares across, so at this size each square is half the swatch. */
+.board-swatch cg-board {
+  display: block;
+  width: 96px;
+  height: 96px;
+  background-size: 100% 100%;
+}
+
+.board-swatch piece {
+  width: 48px;
+  height: 48px;
 }
 
 /* A two-state slider. The label is the hit area, so the whole thing is tappable. */

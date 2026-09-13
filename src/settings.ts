@@ -11,7 +11,10 @@ const STORAGE_KEY = 'punichess.settings';
 import type { Color } from 'chessops/types';
 
 /** The fields that are plain tunable numbers, as opposed to a choice. */
-export type NumericSetting = Exclude<keyof Settings, 'playAs' | 'saveOnNew' | 'pieceSet'>;
+export type NumericSetting = Exclude<
+  keyof Settings,
+  'playAs' | 'saveOnNew' | 'pieceSet' | 'boardTheme'
+>;
 
 /**
  * The piece sets that ship with the app, in the order they are offered.
@@ -33,11 +36,18 @@ export const PIECE_SETS = [
 
 export type PieceSet = (typeof PIECE_SETS)[number];
 
+/** Board colours, written rather than fetched: a board is two colours. */
+export const BOARD_THEMES = ['brown', 'blue', 'green', 'grey', 'purple', 'slate'] as const;
+
+export type BoardTheme = (typeof BOARD_THEMES)[number];
+
 export interface Settings {
   /** The colour you play. The bot takes the other one. */
   readonly playAs: Color;
   /** Which pieces to draw. Yours, on this device.  */
   readonly pieceSet: PieceSet;
+  /** Which board to draw them on. */
+  readonly boardTheme: BoardTheme;
   /**
    * Save the game in progress when starting a new one.
    *
@@ -84,6 +94,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   playAs: 'white',
   pieceSet: 'merida',
+  boardTheme: 'brown',
   saveOnNew: true,
   targetAcpl: 25,
   quietBand: 100,
@@ -176,6 +187,9 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
   const pieceSet = source['pieceSet'];
   result.pieceSet = PIECE_SETS.find(known => known === pieceSet) ?? base.pieceSet;
 
+  const boardTheme = source['boardTheme'];
+  result.boardTheme = BOARD_THEMES.find(known => known === boardTheme) ?? base.boardTheme;
+
   for (const key of Object.keys(LIMITS) as NumericSetting[]) {
     const value = source[key];
     if (typeof value === 'number' && Number.isFinite(value)) {
@@ -199,6 +213,12 @@ export const withSetting = (settings: Settings, key: NumericSetting, value: numb
 export const withPieceSet = (settings: Settings, pieceSet: PieceSet): Settings => ({
   ...settings,
   pieceSet,
+});
+
+/** Choose the board. */
+export const withBoardTheme = (settings: Settings, boardTheme: BoardTheme): Settings => ({
+  ...settings,
+  boardTheme,
 });
 
 /** Keep, or stop keeping, the game in progress when a new one starts. */

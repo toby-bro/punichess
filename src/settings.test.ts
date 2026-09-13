@@ -2,12 +2,14 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  BOARD_THEMES,
   DEFAULT_SETTINGS,
   PIECE_SETS,
   PRESETS,
   loadSettings,
   parseSettings,
   saveSettings,
+  withBoardTheme,
   withColour,
   withPieceSet,
   withSaveOnNew,
@@ -234,5 +236,37 @@ describe('pieceSet', () => {
   it('leaves the other settings alone', () => {
     const changed = withPieceSet(withSetting(DEFAULT_SETTINGS, 'targetAcpl', 55), 'fantasy');
     assert.equal(changed.targetAcpl, 55);
+  });
+});
+
+describe('boardTheme', () => {
+  it('defaults to one that exists', () => {
+    assert.ok(BOARD_THEMES.includes(DEFAULT_SETTINGS.boardTheme));
+  });
+
+  it('accepts any theme that exists', () => {
+    for (const theme of BOARD_THEMES) {
+      assert.equal(withBoardTheme(DEFAULT_SETTINGS, theme).boardTheme, theme);
+    }
+  });
+
+  it('refuses one that does not', () => {
+    // Same reason as the pieces: it becomes a class name, and a theme removed
+    // since it was chosen must not leave an unpainted board.
+    for (const junk of ['marble', '', 7, null, undefined, []]) {
+      assert.equal(parseSettings({ boardTheme: junk }).boardTheme, DEFAULT_SETTINGS.boardTheme);
+    }
+  });
+
+  it('survives a round trip through storage', () => {
+    const storage = fakeStorage();
+    saveSettings(withBoardTheme(DEFAULT_SETTINGS, 'slate'), storage);
+    assert.equal(loadSettings(storage).boardTheme, 'slate');
+  });
+
+  it('is independent of the pieces', () => {
+    const both = withBoardTheme(withPieceSet(DEFAULT_SETTINGS, 'celtic'), 'purple');
+    assert.equal(both.pieceSet, 'celtic');
+    assert.equal(both.boardTheme, 'purple');
   });
 });

@@ -1,4 +1,5 @@
 import './style.css';
+import './boards.css';
 import './pieces.css';
 
 import { Chessground } from 'chessground';
@@ -56,8 +57,16 @@ import {
 } from './referee.ts';
 import { formatEval, renderReview } from './review-view.ts';
 import { reviewGame } from './review.ts';
+import { mountAppearance } from './appearance-panel.ts';
 import { mountSettings } from './settings-panel.ts';
-import { PIECE_SETS, loadSettings, saveSettings, withColour, withSaveOnNew } from './settings.ts';
+import {
+  BOARD_THEMES,
+  PIECE_SETS,
+  loadSettings,
+  saveSettings,
+  withColour,
+  withSaveOnNew,
+} from './settings.ts';
 import { Stats } from './stats.ts';
 import { GameTree } from './tree.ts';
 import type { PvLine } from './uci.ts';
@@ -329,15 +338,19 @@ async function main(): Promise<void> {
       games.render();
     },
   });
+  const appearance = mountAppearance(element('appearance'), settings, changed => {
+    settings = changed;
+    saveSettings(settings);
+    applyAppearance();
+  });
   const panel = mountSettings(element('settings'), settings, changed => {
     // Raising the allowance mid-game should make more errors possible, not fewer.
     blundersLeft += changed.blundersPerGame - settings.blundersPerGame;
     settings = changed;
     saveSettings(settings);
-    applyPieceSet();
   });
 
-  applyPieceSet();
+  applyAppearance();
 
   status('Loading engine…');
   await engine.init();
@@ -717,6 +730,7 @@ async function main(): Promise<void> {
     closeReview();
     moves = mountMoves(element('moves'), tree, { onSelect: goTo, revealed });
     panel.update(settings);
+    appearance.update(settings);
     updateScore();
 
     await engine.newGame();
@@ -1033,9 +1047,12 @@ async function main(): Promise<void> {
    * A class rather than a stylesheet swap: chessground only ever adds classes to
    * the element it was given, so this survives everything it does to the board.
    */
-  function applyPieceSet(): void {
+  function applyAppearance(): void {
     const board = element('board');
     for (const set of PIECE_SETS) board.classList.toggle(`set-${set}`, set === settings.pieceSet);
+    for (const theme of BOARD_THEMES) {
+      board.classList.toggle(`board-${theme}`, theme === settings.boardTheme);
+    }
   }
 
   /** Stop accepting moves without touching the position already on the board. */
