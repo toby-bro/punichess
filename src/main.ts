@@ -774,6 +774,28 @@ async function main(): Promise<void> {
       return;
     }
 
+    /*
+     * A move already in the tree is one you are walking back through, not one
+     * you are making.
+     *
+     * So it is followed rather than judged: no search, no verdict, nothing added
+     * to your accuracy a second time, and no chance of being stopped for a move
+     * you were stopped for once already. The review stays open too -- replaying
+     * the game you are reviewing is reviewing it, and closing the panel because
+     * a piece moved threw away the thing you were reading.
+     */
+    const known = tree.current.children.find(child => child.move?.uci === uci);
+    if (known) {
+      thinking = false;
+      tree.goTo(known.id);
+      mode = { kind: 'play' };
+      status(liveStatus());
+      render();
+      reviewView?.setSelected(tree.current.id);
+      await handOver();
+      return;
+    }
+
     // Say so at once. Judging takes a moment even when it is quick, and on a
     // cold engine on a phone it takes several -- during which the board was
     // locked, the piece had moved, and the status still read "Your move".
@@ -834,8 +856,10 @@ async function main(): Promise<void> {
 
   /** Play your move and hand over to the bot. */
   function accept(uci: string, playedAnyway = false): void {
-    // Carrying on from a reviewed position puts you back in a game, and the
-    // engine's answers must stop being drawn the moment that happens.
+    // Stepping off the reviewed game into something new puts you back in a game,
+    // and the engine's answers must stop being drawn the moment that happens.
+    // Following a move that is already there is not stepping off it, and that
+    // case never reaches here.
     if (reviewing) closeReview();
     tree.play(uci);
     if (playedAnyway) tree.markPlayedAnyway();
