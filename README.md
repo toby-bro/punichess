@@ -329,7 +329,11 @@ The default set is **staunty**.
 
 The title is set in one of 117 cartoon faces, picked at random on every load
 from the list in `src/brand.ts`. Only the one that is chosen is ever requested,
-so it costs a single stylesheet. Hover the title to find out which face you got.
+so it costs a single stylesheet. Which face came up is written into the markup as
+an HTML comment beside the title, so view source tells you the name of one you
+want to keep without a line of small print sitting under the title forever.
+
+The tooltip is therefore free, and is used the way xkcd uses it.
 
 It is the only thing on the page that comes over the network, and it is a
 decoration: with no connection the request fails, the fallback stack takes over

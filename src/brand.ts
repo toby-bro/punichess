@@ -150,6 +150,36 @@ export const BRAND_FONTS: readonly string[] = [
 export const pickBrandFont = (random: () => number = Math.random): string =>
   BRAND_FONTS[Math.floor(random() * BRAND_FONTS.length)] ?? 'Fredoka';
 
+/**
+ * The line hiding in the title's tooltip.
+ *
+ * Stolen wholesale from xkcd, where every comic has a second joke in the
+ * `title` attribute that you only find by leaving the pointer still. Nothing
+ * here is load-bearing; it is the one place in the app allowed to be rude.
+ */
+export const HOVER_LINES: readonly string[] = [
+  'Because you suck at chess.',
+  'It is not that the bot is good. It is that you keep doing that.',
+  'Every red arrow on this board is a receipt.',
+  'The bot blundered eleven moves ago and you said nothing.',
+  'Statistically, you are about to hang that knight.',
+  'The engine is not judging you. The engine is judging you.',
+  'You had mate in two. You now have mate in never.',
+  'Punish, from the Latin for "we did tell you".',
+  'No opening theory, no endgame technique. Vibes and regret.',
+  'It gave you a rook. You gave it back. Twice.',
+  'Offline, so nobody else has to see this.',
+  'The bot is playing badly on purpose. You are freelancing.',
+  'Written entirely to avoid learning any openings.',
+  'Somewhere, a 1200 is disappointed in you.',
+  'All your mistakes, remembered forever, on this device only.',
+  'The only part of this app that will not interrupt you mid-move.',
+];
+
+/** One of them, at random. */
+export const pickHoverLine = (random: () => number = Math.random): string =>
+  HOVER_LINES[Math.floor(random() * HOVER_LINES.length)] ?? HOVER_LINES[0] ?? '';
+
 /** Where Google Fonts serves one family from. */
 export const brandFontUrl = (name: string): string =>
   `https://fonts.googleapis.com/css2?family=${name.replaceAll(' ', '+')}&display=swap`;
@@ -158,18 +188,27 @@ export const brandFontUrl = (name: string): string =>
 export const brandFontStack = (name: string): string => `'${name}', ${FALLBACK}`;
 
 /**
- * Ask for the font and hand it to the stylesheet.
+ * Dress the title: a face, a note of which face, and something to find on hover.
  *
- * The name is put on the title's tooltip as well, because the whole point of
- * rolling a different one every time is that sooner or later one of them is
- * worth keeping, and there has to be some way of finding out which it was.
+ * Which face came up is recorded as an HTML comment beside the title -- in the
+ * markup, never on the page. The point of rolling a new one every load is that
+ * sooner or later one is worth keeping, and you cannot ask for one you have no
+ * name for; but a line of small print under the title every single time is a
+ * high price for a question asked twice. View source when you want to know.
+ *
+ * Which leaves the tooltip free for what xkcd uses it for.
  */
-export function applyBrandFont(name: string, doc: Document = document): void {
+export function dressBrand(doc: Document = document, random: () => number = Math.random): void {
+  const name = pickBrandFont(random);
+
   const link = doc.createElement('link');
   link.rel = 'stylesheet';
   link.href = brandFontUrl(name);
   doc.head.appendChild(link);
   doc.documentElement.style.setProperty('--brand-font', brandFontStack(name));
+
   const brand = doc.querySelector('.brand');
-  if (brand) brand.setAttribute('title', name);
+  if (!brand) return;
+  brand.setAttribute('title', pickHoverLine(random));
+  brand.after(doc.createComment(` font: ${name} `));
 }

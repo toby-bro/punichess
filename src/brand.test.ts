@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { BRAND_FONTS, brandFontStack, brandFontUrl, pickBrandFont } from './brand.ts';
+import {
+  BRAND_FONTS,
+  HOVER_LINES,
+  brandFontStack,
+  brandFontUrl,
+  pickBrandFont,
+  pickHoverLine,
+} from './brand.ts';
 
 test('the list is a list of distinct, usable family names', () => {
   assert.ok(BRAND_FONTS.length > 50);
@@ -59,4 +66,22 @@ test('every font gets a turn', () => {
     ),
   );
   assert.equal(seen.size, BRAND_FONTS.length);
+});
+
+test('there is always something to say on hover', () => {
+  assert.ok(HOVER_LINES.length > 5);
+  assert.equal(new Set(HOVER_LINES).size, HOVER_LINES.length, 'no line twice');
+  for (const line of HOVER_LINES) {
+    assert.ok(line.length > 0);
+    assert.equal(line, line.trim());
+  }
+  assert.equal(
+    pickHoverLine(() => 0),
+    HOVER_LINES[0],
+  );
+  assert.equal(
+    pickHoverLine(() => 0.999999),
+    HOVER_LINES.at(-1),
+  );
+  assert.ok(HOVER_LINES.includes(pickHoverLine(() => 1)));
 });
