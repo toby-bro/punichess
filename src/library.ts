@@ -10,6 +10,7 @@
  * is here.
  */
 
+import type { StoredCache } from './cache.ts';
 import { INITIAL_FEN } from './chess.ts';
 import type { StoredMistakes } from './memory.ts';
 import type { Settings } from './settings.ts';
@@ -72,6 +73,14 @@ export interface SavedGame {
    * back what you tried in it and nothing from anywhere else.
    */
   readonly mistakes?: StoredMistakes | undefined;
+  /**
+   * Everything the engine worked out while the game was played.
+   *
+   * By far the largest part of a saved game, and the reason reopening one costs
+   * nothing: the review, the arrows and the graph all come back without a single
+   * search. `clearAnalysis` gives the space back when it is wanted elsewhere.
+   */
+  readonly cache?: StoredCache | undefined;
 }
 
 export type NewGame = Omit<SavedGame, 'id' | 'saved'>;
@@ -223,6 +232,10 @@ function parseGame(raw: unknown): SavedGame | undefined {
     ...(typeof value['mistakes'] === 'object' && value['mistakes'] !== null
       ? { mistakes: value['mistakes'] as StoredMistakes }
       : {}),
+    // Both are checked by whoever knows their shape, not here.
+    ...(typeof value['cache'] === 'object' && value['cache'] !== null
+      ? { cache: value['cache'] as StoredCache }
+      : {}),
   };
 }
 
@@ -306,6 +319,17 @@ export class GameLibrary {
 
   clear(): void {
     this.#games = [];
+    this.#write();
+  }
+
+  /**
+   * Drop the stored analysis from every game, keeping the games themselves.
+   *
+   * The analysis is most of the bulk. Giving it up costs a re-search the next
+   * time a game is opened; giving up the games costs the games.
+   */
+  clearAnalysis(): void {
+    this.#games = this.#games.map(({ cache: _cache, ...game }) => game);
     this.#write();
   }
 

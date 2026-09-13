@@ -34,6 +34,12 @@ export default tseslint.config(
         'error',
         { functions: false, classes: true, variables: true, typedefs: false },
       ],
+      // Dropping a property by destructuring it out is the clearest way to say
+      // "everything except this", and the discarded name is the point.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { ignoreRestSiblings: true, argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
       'no-console': ['error', { allow: ['warn', 'error'] }],
       eqeqeq: ['error', 'always'],
       'prefer-const': 'error',

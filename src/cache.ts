@@ -8,6 +8,49 @@
 
 import type { PvLine } from './uci.ts';
 
+/**
+ * How much of each variation to keep when storing a search.
+ *
+ * The app never reads further than the reveal steps, and a principal variation
+ * can run thirty moves deep, most of which nothing will ever look at.
+ */
+const STORED_PV_DEPTH = 8;
+
+/** A remembered search, in the shape a saved game stores. */
+export interface StoredSearch {
+  readonly nodes: number;
+  readonly multiPV: number;
+  readonly lines: readonly PvLine[];
+}
+
+export type StoredCache = Record<string, StoredSearch>;
+
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value);
+
+/** Rebuild one variation from storage, or reject it. */
+function parseLine(raw: unknown): PvLine | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const value = raw as Record<string, unknown>;
+  if (!isFiniteNumber(value['cp']) || !isFiniteNumber(value['depth'])) return undefined;
+
+  const moves = Array.isArray(value['moves'])
+    ? value['moves'].filter((move): move is string => typeof move === 'string' && move.length >= 4)
+    : [];
+  const [first, ...rest] = moves;
+  // A variation with no moves in it says nothing and breaks the non-empty
+  // guarantee everything downstream relies on.
+  if (first === undefined) return undefined;
+
+  return {
+    multipv: isFiniteNumber(value['multipv']) ? value['multipv'] : 1,
+    cp: value['cp'],
+    mate: isFiniteNumber(value['mate']) ? value['mate'] : undefined,
+    depth: value['depth'],
+    moves: [first, ...rest],
+  };
+}
+
 export interface CachedSearch {
   readonly lines: readonly PvLine[];
   /** The budget that produced these lines, so a weaker search cannot displace a stronger one. */
@@ -77,5 +120,51 @@ export class PositionCache {
 
   clear(): void {
     this.#entries.clear();
+  }
+
+  /**
+   * Everything known, in the shape a saved game stores.
+   *
+   * Kept in full rather than reduced to one number per position: an evaluation
+   * without its variations is enough to draw a graph and nothing else, and
+   * reopening a game should not mean searching it all over again.
+   */
+  toStored(): StoredCache {
+    return Object.fromEntries(
+      [...this.#entries].map(([fen, entry]) => [
+        fen,
+        {
+          nodes: entry.nodes,
+          multiPV: entry.multiPV,
+          lines: entry.lines.map(line => ({
+            ...line,
+            moves: line.moves.slice(0, STORED_PV_DEPTH) as [string, ...string[]],
+          })),
+        },
+      ]),
+    );
+  }
+
+  /**
+   * Load what a saved game knew.
+   *
+   * Every entry is checked on the way in: a stored search outlives the code that
+   * wrote it, and a malformed one would go on to be treated as the engine's own
+   * word about a position.
+   */
+  restore(raw: unknown): void {
+    this.#entries.clear();
+    if (typeof raw !== 'object' || raw === null) return;
+
+    for (const [fen, entry] of Object.entries(raw as Record<string, unknown>)) {
+      if (typeof entry !== 'object' || entry === null) continue;
+      const search = entry as Record<string, unknown>;
+      if (!isFiniteNumber(search['nodes']) || !isFiniteNumber(search['multiPV'])) continue;
+      if (!Array.isArray(search['lines'])) continue;
+
+      const lines = search['lines'].map(parseLine).filter((line): line is PvLine => !!line);
+      if (lines.length === 0) continue;
+      this.set(fen, lines, search['nodes'], search['multiPV']);
+    }
   }
 }

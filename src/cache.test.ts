@@ -83,3 +83,69 @@ describe('PositionCache', () => {
     assert.equal(cache.size, 0);
   });
 });
+
+describe('travelling with a saved game', () => {
+  it('round-trips searches in full, not just their scores', () => {
+    const cache = new PositionCache();
+    const full: PvLine[] = [
+      { multipv: 1, cp: 30, mate: undefined, depth: 18, moves: ['e2e4', 'e7e5', 'g1f3'] },
+      { multipv: 2, cp: 10, mate: undefined, depth: 18, moves: ['d2d4', 'd7d5'] },
+    ];
+    cache.set('fen', full, 350_000, 8);
+
+    const reopened = new PositionCache();
+    reopened.restore(cache.toStored());
+    // The whole search, so the review and the arrows work without re-searching.
+    assert.deepEqual(reopened.get('fen', 350_000, 8), full);
+  });
+
+  it('keeps the budget, so a restored search is trusted no further than it was', () => {
+    const cache = new PositionCache();
+    cache.set('fen', lines(30), 350_000, 3);
+    const reopened = new PositionCache();
+    reopened.restore(cache.toStored());
+    assert.ok(reopened.get('fen', 350_000, 3));
+    assert.equal(reopened.get('fen', 1_000_000, 3), undefined, 'and no further');
+  });
+
+  it('trims variations nobody reads', () => {
+    const cache = new PositionCache();
+    const long = Array.from({ length: 30 }, (_, i) => `m${i}`) as [string, ...string[]];
+    cache.set('fen', [{ multipv: 1, cp: 0, mate: undefined, depth: 20, moves: long }], 1000, 1);
+    const stored = cache.toStored();
+    assert.equal(stored['fen']?.lines[0]?.moves.length, 8);
+  });
+
+  it('replaces rather than merges, so one game cannot leak into another', () => {
+    const cache = new PositionCache();
+    cache.set('old', lines(30), 1000, 1);
+    cache.restore({
+      new: { nodes: 1000, multiPV: 1, lines: [{ cp: 5, depth: 9, moves: ['e2e4'] }] },
+    });
+    assert.equal(cache.get('old', 1000, 1), undefined);
+    assert.ok(cache.get('new', 1000, 1));
+  });
+
+  it('shrugs off anything that is not a stored cache', () => {
+    const cache = new PositionCache();
+    for (const junk of [null, undefined, 42, 'nonsense', []]) {
+      assert.doesNotThrow(() => {
+        cache.restore(junk);
+      });
+      assert.equal(cache.size, 0);
+    }
+  });
+
+  it('drops entries it cannot trust, keeping the rest', () => {
+    const cache = new PositionCache();
+    cache.restore({
+      good: { nodes: 1000, multiPV: 1, lines: [{ cp: 5, depth: 9, moves: ['e2e4'] }] },
+      noBudget: { lines: [{ cp: 5, depth: 9, moves: ['e2e4'] }] },
+      noLines: { nodes: 1000, multiPV: 1, lines: [] },
+      emptyMoves: { nodes: 1000, multiPV: 1, lines: [{ cp: 5, depth: 9, moves: [] }] },
+      notAnObject: 42,
+    });
+    assert.equal(cache.size, 1);
+    assert.ok(cache.get('good', 1000, 1));
+  });
+});

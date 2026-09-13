@@ -114,6 +114,7 @@ const buttons = {
   pgnExport: element('pgn-export'),
   pgnImport: element('pgn-import'),
   pgnCopy: element('pgn-copy'),
+  clearAnalysis: element('clear-analysis'),
   forget: element('forget'),
   expandMoves: element('expand-moves'),
   saveGame: element('save-game'),
@@ -1057,6 +1058,8 @@ async function main(): Promise<void> {
       // Every position you were stopped in, so reopening the game draws them
       // back onto the board exactly where they happened.
       mistakes: memory.toStored(),
+      // And everything the engine worked out, so reopening costs no searching.
+      cache: cache.toStored(),
     };
   }
 
@@ -1115,8 +1118,8 @@ async function main(): Promise<void> {
     tree = restored.tree;
     savedEvals = restored.evals;
     openGameId = game.id;
-    // The searches behind a stored game are gone; only its numbers came back.
-    cache.clear();
+    // Everything the engine knew about this game, back as it was.
+    cache.restore(game.cache);
     stats.reset();
     memory.restore(game.mistakes);
     revealed.clear();
@@ -1278,6 +1281,11 @@ async function main(): Promise<void> {
       void startGame();
     };
     buttons.saveGame.onclick = saveGame;
+    buttons.clearAnalysis.onclick = () => {
+      library.clearAnalysis();
+      games.render();
+      status('Stored analysis cleared. Saved games will re-search when reopened.');
+    };
     buttons.pgnExport.onclick = exportPgn;
     buttons.pgnImport.onclick = () => {
       importPgn(pgnText.value);

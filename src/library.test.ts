@@ -434,3 +434,56 @@ describe('keeping a saved game up to date', () => {
     assert.equal(new GameLibrary(storage).find(saved.id)?.nodes.length, 5);
   });
 });
+
+describe('clearing the stored analysis', () => {
+  const withCache = (name: string): NewGame => ({
+    ...gameFrom(branched()),
+    name,
+    cache: { 'some fen': { nodes: 350_000, multiPV: 8, lines: [] } },
+  });
+
+  it('strips it from every saved game at once', () => {
+    const shelf = new GameLibrary(fakeStorage());
+    shelf.save(withCache('a'));
+    shelf.save(withCache('b'));
+    shelf.save(withCache('c'));
+
+    shelf.clearAnalysis();
+    assert.ok(
+      shelf.games.every(game => game.cache === undefined),
+      'all of them, not one',
+    );
+  });
+
+  it('keeps the games themselves, and everything else about them', () => {
+    const shelf = new GameLibrary(fakeStorage());
+    const saved = shelf.save({
+      ...withCache('keeper'),
+      mistakes: { 'some fen': [] },
+    });
+    shelf.setFavourite(saved.id, true);
+    shelf.clearAnalysis();
+
+    const found = shelf.find(saved.id);
+    assert.ok(found);
+    assert.equal(found.name, 'keeper');
+    assert.equal(found.favourite, true);
+    assert.equal(found.nodes.length, 4, 'the moves are the game; the analysis is not');
+    assert.equal(found.metrics.missed, 2);
+  });
+
+  it('sticks, so the space is actually given back', () => {
+    const storage = fakeStorage();
+    const shelf = new GameLibrary(storage);
+    shelf.save(withCache('a'));
+    shelf.clearAnalysis();
+    assert.equal(new GameLibrary(storage).games[0]?.cache, undefined);
+  });
+
+  it('does nothing embarrassing on an empty shelf', () => {
+    const shelf = new GameLibrary(fakeStorage());
+    assert.doesNotThrow(() => {
+      shelf.clearAnalysis();
+    });
+  });
+});
