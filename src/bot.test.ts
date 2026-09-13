@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  HOLD_FOR_DRAW_CP,
   MAX_PROBES,
   type Policy,
   type Search,
@@ -11,7 +12,7 @@ import {
   pickHonest,
   pickMateTrap,
 } from './bot.ts';
-import { INITIAL_FEN } from './chess.ts';
+import { INITIAL_FEN, positionHash } from './chess.ts';
 import { DECIDED_CP } from './referee.ts';
 import { DEFAULT_SETTINGS, type Settings, parseSettings } from './settings.ts';
 import { type PvLine, mateToCp } from './uci.ts';
@@ -336,5 +337,103 @@ describe('chooseMove', () => {
     );
     assert.equal(move?.deliberateError, false);
     assert.equal(wideSearches, 0, 'the wide search is the expensive one; skip it entirely');
+  });
+});
+
+describe('staying out of positions this line has already been through', () => {
+  // After 1. Nf3 Nf6 2. Ng1, Black to move: Ng8 puts the board back exactly as
+  // it started, which is the repetition worth refusing.
+  const backAgain = 'rnbqkb1r/pppppppp/5n2/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 3 2';
+  const lines = search(['f6g8', 30], ['d7d5', 20], ['e7e5', 10]);
+  const seen = new Set([positionHash(INITIAL_FEN)]);
+
+  it('declines the move that walks back into one', async () => {
+    for (let i = 0; i < 40; i++) {
+      const move = await chooseMove(policy(), backAgain, lines, {
+        wantsError: false,
+        acpl: 0,
+        avoid: seen,
+      });
+      assert.notEqual(move?.uci, 'f6g8', 'that is the repetition');
+    }
+  });
+
+  it('plays it anyway when it is the only move there is', async () => {
+    const forced = search(['f6g8', 30]);
+    const move = await chooseMove(policy(), backAgain, forced, {
+      wantsError: false,
+      acpl: 0,
+      avoid: seen,
+    });
+    assert.equal(move?.uci, 'f6g8', 'refusing to move is not an option');
+  });
+
+  it('is happy to play it when the position is new', async () => {
+    const seenMoves = new Set<string>();
+    for (let i = 0; i < 40; i++) {
+      const move = await chooseMove(policy(), backAgain, lines, { wantsError: false, acpl: 40 });
+      if (move) seenMoves.add(move.uci);
+    }
+    assert.ok(seenMoves.has('f6g8'), 'nothing wrong with the move itself');
+  });
+
+  it('keeps deliberate errors out of a repetition too', async () => {
+    const wide = search(['d7d5', 30], ['f6g8', -150]);
+    const move = await chooseMove(
+      policy({
+        searchWide: () => Promise.resolve(wide),
+        probe: replying(['e2e4', 300], ['d2d4', 0]),
+        settings: settingsWith({ mateTrapShare: 0 }),
+      }),
+      backAgain,
+      wide,
+      { wantsError: true, acpl: 0, avoid: seen },
+    );
+    assert.notEqual(move?.uci, 'f6g8');
+  });
+});
+
+describe('repeating when losing', () => {
+  const backAgain = 'rnbqkb1r/pppppppp/5n2/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 3 2';
+  const seen = new Set([positionHash(INITIAL_FEN)]);
+
+  it('takes the repetition when it is behind', async () => {
+    // Every move loses; going back to a position already seen is a draw, and a
+    // draw is the best thing available.
+    const losing = search(['f6g8', HOLD_FOR_DRAW_CP - 200], ['d7d5', HOLD_FOR_DRAW_CP - 300]);
+    const seenMoves = new Set<string>();
+    for (let i = 0; i < 40; i++) {
+      const move = await chooseMove(policy(), backAgain, losing, {
+        wantsError: false,
+        acpl: 0,
+        avoid: seen,
+      });
+      if (move) seenMoves.add(move.uci);
+    }
+    assert.ok(seenMoves.has('f6g8'), 'holding a draw is the right move from behind');
+  });
+
+  it('still refuses it from a level position', async () => {
+    const level = search(['f6g8', 0], ['d7d5', -10]);
+    for (let i = 0; i < 40; i++) {
+      const move = await chooseMove(policy(), backAgain, level, {
+        wantsError: false,
+        acpl: 0,
+        avoid: seen,
+      });
+      assert.notEqual(move?.uci, 'f6g8', 'shuffling a level game away is just wasting it');
+    }
+  });
+
+  it('still refuses it from a winning position', async () => {
+    const winning = search(['f6g8', 400], ['d7d5', 380]);
+    for (let i = 0; i < 40; i++) {
+      const move = await chooseMove(policy(), backAgain, winning, {
+        wantsError: false,
+        acpl: 0,
+        avoid: seen,
+      });
+      assert.notEqual(move?.uci, 'f6g8');
+    }
   });
 });

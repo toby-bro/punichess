@@ -17,6 +17,42 @@ export { INITIAL_FEN };
 /** Parse a FEN, throwing if it does not describe a legal position. */
 export const position = (fen: string): Chess => Chess.fromSetup(parseFen(fen).unwrap()).unwrap();
 
+/**
+ * A position's identity for repetition purposes, as a number.
+ *
+ * FNV-1a over the first four FEN fields: the pieces, the side to move, the
+ * castling rights and the en passant square. The move clocks are skipped
+ * because they differ by definition, and comparing whole FENs would therefore
+ * never find a repetition at all.
+ *
+ * A number rather than the string it came from, and computed without cutting
+ * one out, because this runs for every candidate move of every search. A
+ * collision would cost a move needlessly declined, which is not worth a byte
+ * more than 32 bits to avoid.
+ */
+export function positionHash(fen: string): number {
+  let hash = 0x811c9dc5;
+  let fields = 0;
+  for (let i = 0; i < fen.length; i++) {
+    const code = fen.charCodeAt(i);
+    if (code === 32 && ++fields === 4) break;
+    hash = Math.imul(hash ^ code, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+/**
+ * Plies since the last pawn move or capture, as the FEN records it.
+ *
+ * Both of those are irreversible, so no position before the last one can ever
+ * come round again: this is exactly how far back a repetition check needs to
+ * look, and usually it is only a handful of moves.
+ */
+export function halfmoveClock(fen: string): number {
+  const clock = Number(fen.split(' ')[4]);
+  return Number.isFinite(clock) && clock >= 0 ? clock : 0;
+}
+
 /** Whether a FEN parses and describes a position the rules allow. */
 export function isLegal(fen: string): boolean {
   try {

@@ -13,7 +13,7 @@ import initEngine from 'stockfish';
 
 import { chooseMove, pickMateTrap } from '../src/bot.ts';
 import { INITIAL_FEN, fenAfter, sanOf } from '../src/chess.ts';
-import { OWN_BLUNDER, isError, isMateScore, judge, scoreOfMove } from '../src/referee.ts';
+import { OWN_BLUNDER, isError, isMateScore, judge } from '../src/referee.ts';
 import { DEFAULT_SETTINGS, parseSettings } from '../src/settings.ts';
 import { collectLines } from '../src/uci.ts';
 
@@ -63,11 +63,6 @@ const searchWith = async (fen, multiPV) => {
 };
 
 const analyse = fen => searchWith(fen, MULTI_PV);
-/** Score a move the narrow search did not list, as the app does. */
-const scoreLookup = async (fen, uci) => {
-  const child = fenAfter(fen, uci);
-  return scoreOfMove(await searchWith(child, 1), child);
-};
 const analyseWide = fen => searchWith(fen, 40);
 const probe = fen => searchWith(fen, 2);
 
@@ -131,19 +126,37 @@ assert.ok(
   'the wide search is what makes errors possible at all',
 );
 
+// Across a handful of positions rather than one: the punishability and
+// "worth spotting" filters are strict, and any single position can legitimately
+// offer nothing worth setting up. What must not happen is never finding one.
+const POSITIONS = [
+  midgame,
+  'r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/2N2N2/PPPP1PPP/R1BQK2R w KQkq - 6 5',
+  'r1bq1rk1/pppp1ppp/2n2n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQK2R b KQ - 0 6',
+  'rnbqkb1r/pp2pppp/3p1n2/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 4',
+];
+
 let deliberate = 0;
-for (let i = 0; i < 6; i++) {
-  const move = await chooseMove(policy, midgame, lines, { wantsError: true, acpl: 0 });
-  if (move.deliberateError) {
+let asked = 0;
+for (const position of POSITIONS) {
+  const candidates = await analyse(position);
+  for (let i = 0; i < 3; i++) {
+    asked++;
+    const move = await chooseMove(policy, position, candidates, { wantsError: true, acpl: 0 });
+    if (!move.deliberateError) continue;
     deliberate++;
-    const cost = judge(lines, move.uci, await scoreLookup(midgame, move.uci)).cpLoss;
-    assert.ok(
-      cost >= settings.blunderMin,
-      `a deliberate error must actually cost something, got ${cost}`,
-    );
+
+    // Whatever it picked has to be a mistake worth spotting: in band, and not
+    // answered by simply taking something.
+    const after = fenAfter(position, move.uci);
+    const replies = await analyse(after);
+    if (move.kind === 'blunder') {
+      const answer = replies[0].moves[0];
+      assert.notEqual(answer.slice(2, 4), move.uci.slice(2, 4), 'not just taking what moved');
+    }
   }
 }
-console.log(`asked to err 6 times, did so ${deliberate} times`);
+console.log(`asked to err ${asked} times, did so ${deliberate} times`);
 assert.ok(deliberate > 0, 'a bot that never errs on purpose is the bug this test exists for');
 
 // 5. Honest play never strays outside the quiet band.

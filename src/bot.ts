@@ -7,7 +7,7 @@
  * are punishable -- see `pickBlunder` and `pickMateTrap`.
  */
 
-import { fenAfter, moveKind } from './chess.ts';
+import { fenAfter, moveKind, positionHash } from './chess.ts';
 import { DECIDED_CP } from './referee.ts';
 import type { Settings } from './settings.ts';
 import type { PvLine } from './uci.ts';
@@ -35,7 +35,17 @@ export const PUNISH_MARGIN = 60;
  * Each test is a search, and a bot that thinks for ten seconds is worse company
  * than one that occasionally fails to find an error worth making.
  */
-export const MAX_PROBES = 4;
+export const MAX_PROBES = 5;
+
+/**
+ * How far behind the bot must be before a repetition becomes fair play.
+ *
+ * Shuffling into a draw from a level or better position is just a way of
+ * wasting a game. From a worse one it is the right move, and being held to a
+ * draw you thought you were winning says something true about the position --
+ * which is the sort of thing worth finding out.
+ */
+export const HOLD_FOR_DRAW_CP = -50;
 
 /** Analyse a position. Injected so the policy can be tested without an engine. */
 export type Search = (fen: string) => Promise<readonly PvLine[]>;
@@ -71,6 +81,14 @@ export interface MoveContext {
    * gives you one.
    */
   readonly exclude?: ReadonlySet<string> | undefined;
+  /**
+   * Positions already reached in this line, hashed.
+   *
+   * The bot steers away from them, so a won game is not shuffled into a draw by
+   * repetition while the player is trying to convert it. Only this line: the
+   * same position down some other branch was never repeated here.
+   */
+  readonly avoid?: ReadonlySet<number> | undefined;
 }
 
 export type MoveKind = 'quiet' | 'blunder' | 'mate-trap';
@@ -93,10 +111,26 @@ const destOf = (uci: string): string => uci.slice(2, 4);
  * Lines whose move is still on the table.
  *
  * Never empties the list: if every candidate has been ruled out, the position
- * still needs a move, and the best one is a better answer than none.
+ * still needs a move, and the best one is a better answer than none. That
+ * matters for repetition in particular -- sometimes every legal move goes back
+ * somewhere you have been, and refusing to move is not an option.
  */
-function allowed(lines: readonly PvLine[], exclude: ReadonlySet<string>): readonly PvLine[] {
-  const left = lines.filter(line => !exclude.has(line.moves[0]));
+function allowed(
+  lines: readonly PvLine[],
+  fen: string,
+  exclude: ReadonlySet<string>,
+  avoid: ReadonlySet<number>,
+): readonly PvLine[] {
+  const left = lines.filter(line => {
+    if (exclude.has(line.moves[0])) return false;
+    if (avoid.size === 0) return true;
+    try {
+      return !avoid.has(positionHash(fenAfter(fen, line.moves[0])));
+    } catch {
+      // A move that will not play is not a move to worry about repeating.
+      return true;
+    }
+  });
   return left.length > 0 ? left : lines;
 }
 
@@ -133,6 +167,8 @@ export async function chooseMove(
   if (!best) return undefined;
   const random = policy.random ?? Math.random;
   const exclude = context.exclude ?? new Set<string>();
+  // A side that is losing is entitled to repeat.
+  const avoid = best.cp <= HOLD_FOR_DRAW_CP ? new Set<number>() : (context.avoid ?? new Set());
 
   if (context.wantsError && Math.abs(best.cp) <= DECIDED_CP) {
     // One wide search serves both kinds of error, so erring costs a single
@@ -142,18 +178,23 @@ export async function chooseMove(
     // A mate to find is a better lesson than a dropped piece, so try for one
     // first when the settings ask for it.
     if (random() < policy.settings.mateTrapShare) {
-      const trap = pickMateTrap(allowed(wide, exclude), best, policy.settings, random);
+      const trap = pickMateTrap(allowed(wide, fen, exclude, avoid), best, policy.settings, random);
       if (trap) {
         return { uci: trap.uci, kind: 'mate-trap', deliberateError: true, cpLoss: trap.cpLoss };
       }
     }
-    const blunder = await pickBlunder(policy, fen, best, allowed(wide, exclude));
+    const blunder = await pickBlunder(policy, fen, best, allowed(wide, fen, exclude, avoid));
     if (blunder) {
       return { uci: blunder.uci, kind: 'blunder', deliberateError: true, cpLoss: blunder.cpLoss };
     }
   }
 
-  const quiet = pickHonest(allowed(lines, exclude), policy.settings, context.acpl, random);
+  const quiet = pickHonest(
+    allowed(lines, fen, exclude, avoid),
+    policy.settings,
+    context.acpl,
+    random,
+  );
   if (!quiet) return undefined;
   return { uci: quiet, kind: 'quiet', deliberateError: false, cpLoss: honestLoss(lines, quiet) };
 }

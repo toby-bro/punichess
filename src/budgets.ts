@@ -37,7 +37,7 @@ export const VERIFY: Budget = { multiPV: 8, nodes: 1_200_000 };
 export const WIDE: Budget = { multiPV: 40, nodes: 250_000 };
 
 /** Just enough to see whether an error has one clear refutation. */
-export const PROBE: Budget = { multiPV: 2, nodes: 150_000 };
+export const PROBE: Budget = { multiPV: 2, nodes: 120_000 };
 
 /** Looking up a single move the narrow search did not list. */
 export const LOOKUP: Budget = { multiPV: 1, nodes: 350_000 };

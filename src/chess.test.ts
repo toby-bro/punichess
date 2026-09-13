@@ -6,7 +6,9 @@ import {
   fenAfter,
   isLegal,
   legalDests,
+  halfmoveClock,
   outcomeOf,
+  positionHash,
   sanLine,
   sanOf,
   stalemateCage,
@@ -128,5 +130,68 @@ describe('stalemateCage', () => {
 
   it('says nothing about a checkmate, which is a different thing entirely', () => {
     assert.equal(stalemateCage('R5k1/5ppp/8/8/8/8/8/6K1 b - - 0 1'), undefined);
+  });
+});
+
+describe('positionHash', () => {
+  it('ignores the move clocks, which always differ', () => {
+    const early = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    const later = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 8 12';
+    assert.equal(positionHash(early), positionHash(later));
+  });
+
+  it('separates positions that differ in whose move it is', () => {
+    const white = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    const black = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1';
+    assert.notEqual(positionHash(white), positionHash(black));
+  });
+
+  it('separates positions that differ in castling rights', () => {
+    const both = 'r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1';
+    const lost = 'r3k2r/8/8/8/8/8/8/R3K2R w kq - 0 1';
+    assert.notEqual(positionHash(both), positionHash(lost));
+  });
+
+  it('separates positions that differ in en passant', () => {
+    const available = 'rnbqkbnr/pp1ppppp/8/2p5/8/8/PPPPPPPP/RNBQKBNR w KQkq c6 0 2';
+    const gone = 'rnbqkbnr/pp1ppppp/8/2p5/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 2';
+    assert.notEqual(positionHash(available), positionHash(gone));
+  });
+
+  it('is a plain unsigned number', () => {
+    const hash = positionHash(INITIAL_FEN);
+    assert.ok(Number.isInteger(hash) && hash >= 0);
+  });
+
+  it('does not collide across a whole game of positions', () => {
+    // Not a proof, but the only failure mode worth checking: a collision would
+    // cost a move needlessly declined.
+    const seen = new Set<number>();
+    let fen = INITIAL_FEN;
+    for (const uci of ['e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1b5', 'a7a6', 'b5a4', 'g8f6']) {
+      seen.add(positionHash(fen));
+      fen = fenAfter(fen, uci);
+    }
+    assert.equal(seen.size, 8);
+  });
+});
+
+describe('halfmoveClock', () => {
+  it('reads the count of plies since the last pawn move or capture', () => {
+    assert.equal(halfmoveClock('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 7 12'), 7);
+  });
+
+  it('is zero right after a pawn move', () => {
+    assert.equal(halfmoveClock(fenAfter(INITIAL_FEN, 'e2e4')), 0);
+  });
+
+  it('counts up over moves that can be taken back', () => {
+    const after = fenAfter(fenAfter(INITIAL_FEN, 'g1f3'), 'g8f6');
+    assert.equal(halfmoveClock(after), 2);
+  });
+
+  it('reads nonsense as zero rather than going wrong quietly', () => {
+    assert.equal(halfmoveClock('not a fen'), 0);
+    assert.equal(halfmoveClock('a b c d e f'), 0);
   });
 });

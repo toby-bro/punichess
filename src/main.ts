@@ -14,7 +14,9 @@ import {
   fenAfter,
   legalDests,
   noDests,
+  halfmoveClock,
   outcomeOf,
+  positionHash,
   sanLine,
   sanOf,
   stalemateCage,
@@ -926,8 +928,13 @@ async function main(): Promise<void> {
         lines,
         // While punishing, the bot plays the best move and nothing else.
         punishing()
-          ? { wantsError: false, acpl: Number.POSITIVE_INFINITY, exclude }
-          : { wantsError: wantsError(), acpl: stats.acpl('bot'), exclude },
+          ? { wantsError: false, acpl: Number.POSITIVE_INFINITY, exclude, avoid: seenPositions() }
+          : {
+              wantsError: wantsError(),
+              acpl: stats.acpl('bot'),
+              exclude,
+              avoid: seenPositions(),
+            },
       );
       if (!move) {
         thinking = false;
@@ -967,6 +974,23 @@ async function main(): Promise<void> {
   /** Whether the bot is currently answering with best moves only. */
   function punishing(): boolean {
     return tree.punishing;
+  }
+
+  /**
+   * The positions this line could still repeat.
+   *
+   * Only this line -- the same position down another branch was never repeated
+   * here -- and only back as far as the last pawn move or capture. Both are
+   * irreversible, so nothing before the last one can come round again, and the
+   * halfmove clock in the FEN says exactly how many plies that is. In an
+   * ordinary middlegame that is a handful of positions rather than the game.
+   */
+  function seenPositions(): Set<number> {
+    const path = tree.path;
+    const reversible = halfmoveClock(tree.fen);
+    return new Set(
+      path.slice(Math.max(0, path.length - 1 - reversible)).map(node => positionHash(node.fen)),
+    );
   }
 
   function wantsError(): boolean {
