@@ -1,13 +1,15 @@
 /**
- * What you have got wrong here before.
+ * What you got wrong in this game.
  *
- * Keyed by position, and kept between sessions: coming back to a position weeks
- * later and being shown the move you fell for last time is the whole point. A
- * FEN includes the side to move, so a remembered mistake can only ever resurface
- * in the position it was actually made in.
+ * Keyed by position, and scoped to one game rather than kept globally. That
+ * scope is the whole point: openings repeat, so a store shared across games
+ * paints last week's blunders onto a board you have only just set up, which
+ * tells you nothing about the game you are playing and gives away that the
+ * position is worth worrying about.
+ *
+ * It travels with the game instead, saved and reopened along with the tree, so
+ * a game you come back to still knows what you tried in it.
  */
-
-const STORAGE_KEY = 'punichess.mistakes';
 
 /** Positions remembered before the least recently seen are dropped. */
 const DEFAULT_CAPACITY = 500;
@@ -53,16 +55,16 @@ function parseMistake(raw: unknown): Mistake | undefined {
   };
 }
 
+/** The shape a game's mistakes are stored in. */
+export type StoredMistakes = Record<string, Mistake[]>;
+
 export class MistakeMemory {
   /** Insertion order is recency: the oldest entry is the first one out. */
   #positions = new Map<string, Mistake[]>();
   readonly #capacity: number;
-  readonly #storage: Storage | undefined;
 
-  constructor(storage: Storage | undefined = globalThis.localStorage, capacity = DEFAULT_CAPACITY) {
-    this.#storage = storage;
+  constructor(capacity = DEFAULT_CAPACITY) {
     this.#capacity = Math.max(1, capacity);
-    this.#load();
   }
 
   get size(): number {
@@ -102,17 +104,37 @@ export class MistakeMemory {
     this.#positions.delete(fen);
     this.#positions.set(fen, merged);
     this.#evict();
-    this.#save();
   }
 
   forget(fen: string): void {
     this.#positions.delete(fen);
-    this.#save();
   }
 
   clear(): void {
     this.#positions.clear();
-    this.#save();
+  }
+
+  /** Everything, in the shape a saved game stores. */
+  toStored(): StoredMistakes {
+    return Object.fromEntries(this.#positions);
+  }
+
+  /**
+   * Replace everything with what a saved game held.
+   *
+   * Stored history outlives the code that wrote it, so each entry is checked on
+   * the way in and an unusable one is dropped without taking the rest with it.
+   */
+  restore(raw: unknown): void {
+    this.#positions = new Map();
+    if (typeof raw !== 'object' || raw === null) return;
+
+    for (const [fen, list] of Object.entries(raw as Record<string, unknown>)) {
+      if (!Array.isArray(list)) continue;
+      const mistakes = list.map(parseMistake).filter((entry): entry is Mistake => !!entry);
+      if (mistakes.length > 0) this.#positions.set(fen, mistakes);
+    }
+    this.#evict();
   }
 
   #evict(): void {
@@ -120,42 +142,6 @@ export class MistakeMemory {
       const oldest = this.#positions.keys().next();
       if (oldest.done === true) break;
       this.#positions.delete(oldest.value);
-    }
-  }
-
-  #load(): void {
-    try {
-      const raw = this.#storage?.getItem(STORAGE_KEY);
-      if (raw === null || raw === undefined) return;
-      const parsed: unknown = JSON.parse(raw);
-      if (typeof parsed !== 'object' || parsed === null) return;
-
-      // Read through `unknown` rather than casting to a shape: stored data is
-      // whatever an older version wrote, and a cast would talk the compiler out
-      // of the very checks that make it safe.
-      const positions: unknown = (parsed as Record<string, unknown>)['positions'];
-      if (typeof positions !== 'object' || positions === null) return;
-
-      for (const [fen, list] of Object.entries(positions as Record<string, unknown>)) {
-        if (!Array.isArray(list)) continue;
-        const mistakes = list.map(parseMistake).filter((entry): entry is Mistake => !!entry);
-        if (mistakes.length > 0) this.#positions.set(fen, mistakes);
-      }
-      this.#evict();
-    } catch {
-      // Unreadable history is not worth failing a game over; start fresh.
-      this.#positions = new Map();
-    }
-  }
-
-  #save(): void {
-    try {
-      this.#storage?.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ positions: Object.fromEntries(this.#positions) }),
-      );
-    } catch {
-      // Private browsing, quota, storage disabled: play on regardless.
     }
   }
 }

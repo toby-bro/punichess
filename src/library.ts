@@ -11,6 +11,7 @@
  */
 
 import { INITIAL_FEN } from './chess.ts';
+import type { StoredMistakes } from './memory.ts';
 import type { Settings } from './settings.ts';
 import { GameTree, type TreeNode } from './tree.ts';
 
@@ -64,6 +65,13 @@ export interface SavedGame {
   readonly start: string;
   readonly rootEval?: SavedEval | undefined;
   readonly nodes: readonly SavedNode[];
+  /**
+   * What you got wrong in this game, by position.
+   *
+   * Part of the game rather than a store of its own, so reopening one brings
+   * back what you tried in it and nothing from anywhere else.
+   */
+  readonly mistakes?: StoredMistakes | undefined;
 }
 
 export type NewGame = Omit<SavedGame, 'id' | 'saved'>;
@@ -211,6 +219,10 @@ function parseGame(raw: unknown): SavedGame | undefined {
     start: typeof start === 'string' && start.length > 0 ? start : INITIAL_FEN,
     rootEval: parseEval(value['rootEval']),
     nodes: parsed,
+    // Checked when it is handed to the memory, which is what knows the shape.
+    ...(typeof value['mistakes'] === 'object' && value['mistakes'] !== null
+      ? { mistakes: value['mistakes'] as StoredMistakes }
+      : {}),
   };
 }
 

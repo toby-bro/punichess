@@ -82,6 +82,15 @@
           Evaluate new positions
         </label>
         <button id="new-game" type="button">New game</button>
+        <label
+          class="switch"
+          id="keep-box"
+          title="Save the game in progress when starting a new one"
+        >
+          <input id="keep" type="checkbox" />
+          <span class="track"></span>
+          Save on new
+        </label>
       </div>
 
       <details id="settings-box">
@@ -91,9 +100,9 @@
           <button
             id="forget"
             type="button"
-            title="Discard the record of positions you have blundered in"
+            title="Discard what this game remembers about where you went wrong"
           >
-            Forget my mistakes
+            Forget this game's mistakes
           </button>
         </div>
       </details>

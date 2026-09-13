@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { GameLibrary, type NewGame, restoreTree, serialiseTree } from './library.ts';
+import type { Mistake } from './memory.ts';
 import { DEFAULT_SETTINGS } from './settings.ts';
 import { GameTree } from './tree.ts';
 
@@ -322,5 +323,53 @@ describe('favourites', () => {
     const shelf = new GameLibrary(storage, 10);
     for (let i = 0; i < 4; i++) shelf.save({ ...gameFrom(branched()), name: `g${i}` }, i);
     assert.equal(shelf.size, 4, 'shedding games cannot fix a storage that never works');
+  });
+});
+
+describe('a game carries its own mistakes', () => {
+  const mistake: Mistake = {
+    uci: 'e2e4',
+    san: 'e4',
+    cpLoss: 150,
+    missesMate: false,
+    hangsMate: false,
+    stalemate: false,
+    times: 1,
+    last: 0,
+  };
+
+  it('stores and returns them', () => {
+    const shelf = new GameLibrary(fakeStorage());
+    const saved = shelf.save({
+      ...gameFrom(branched()),
+      mistakes: { 'some fen': [mistake] },
+    });
+    const found = shelf.find(saved.id);
+    assert.ok(found?.mistakes);
+    assert.equal(Object.keys(found.mistakes).length, 1);
+  });
+
+  it('survives being reopened', () => {
+    const storage = fakeStorage();
+    const saved = new GameLibrary(storage).save({
+      ...gameFrom(branched()),
+      mistakes: { 'some fen': [mistake] },
+    });
+    assert.ok(new GameLibrary(storage).find(saved.id)?.mistakes);
+  });
+
+  it('is simply absent on a game that had none', () => {
+    const shelf = new GameLibrary(fakeStorage());
+    const saved = shelf.save(gameFrom(branched()));
+    assert.equal(shelf.find(saved.id)?.mistakes, undefined);
+  });
+
+  it('ignores a stored value that is not a record', () => {
+    const storage = fakeStorage();
+    const shelf = new GameLibrary(storage);
+    const saved = shelf.save(gameFrom(branched()));
+    const raw = JSON.parse(storage.getItem('punichess.games') ?? '[]') as Record<string, unknown>[];
+    storage.setItem('punichess.games', JSON.stringify(raw.map(g => ({ ...g, mistakes: 'nope' }))));
+    assert.equal(new GameLibrary(storage).find(saved.id)?.mistakes, undefined);
   });
 });

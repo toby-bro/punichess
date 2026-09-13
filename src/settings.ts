@@ -11,11 +11,18 @@ const STORAGE_KEY = 'punichess.settings';
 import type { Color } from 'chessops/types';
 
 /** The fields that are plain tunable numbers, as opposed to a choice. */
-export type NumericSetting = Exclude<keyof Settings, 'playAs'>;
+export type NumericSetting = Exclude<keyof Settings, 'playAs' | 'saveOnNew'>;
 
 export interface Settings {
   /** The colour you play. The bot takes the other one. */
   readonly playAs: Color;
+  /**
+   * Save the game in progress when starting a new one.
+   *
+   * On by default: losing a game to the button next to it is a worse surprise
+   * than an unwanted entry in a list you can delete.
+   */
+  readonly saveOnNew: boolean;
   /**
    * The average centipawn loss the bot aims for across its honest moves.
    * This is the strength dial: 0 is best-move play, 60 is a distracted club
@@ -54,6 +61,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   playAs: 'white',
+  saveOnNew: true,
   targetAcpl: 25,
   quietBand: 100,
   blunderMin: 100,
@@ -136,6 +144,9 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
   const playAs = source['playAs'];
   result.playAs = playAs === 'white' || playAs === 'black' ? playAs : base.playAs;
 
+  const saveOnNew = source['saveOnNew'];
+  result.saveOnNew = typeof saveOnNew === 'boolean' ? saveOnNew : base.saveOnNew;
+
   for (const key of Object.keys(LIMITS) as NumericSetting[]) {
     const value = source[key];
     if (typeof value === 'number' && Number.isFinite(value)) {
@@ -154,6 +165,12 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
 /** Apply a numeric change, clamped and consistent. */
 export const withSetting = (settings: Settings, key: NumericSetting, value: number): Settings =>
   parseSettings({ ...settings, [key]: value }, settings);
+
+/** Keep, or stop keeping, the game in progress when a new one starts. */
+export const withSaveOnNew = (settings: Settings, saveOnNew: boolean): Settings => ({
+  ...settings,
+  saveOnNew,
+});
 
 /** Switch sides. Callers are expected to start a new game afterwards. */
 export const withColour = (settings: Settings, playAs: Color): Settings => ({

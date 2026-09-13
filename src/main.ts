@@ -38,7 +38,7 @@ import {
 import { formatEval, renderReview } from './review-view.ts';
 import { reviewGame } from './review.ts';
 import { mountSettings } from './settings-panel.ts';
-import { loadSettings, saveSettings, withColour } from './settings.ts';
+import { loadSettings, saveSettings, withColour, withSaveOnNew } from './settings.ts';
 import { Stats } from './stats.ts';
 import { GameTree } from './tree.ts';
 import type { PvLine } from './uci.ts';
@@ -84,6 +84,7 @@ const pgnText = element('pgn-text') as HTMLTextAreaElement;
 const pgnStatusEl = element('pgn-status');
 const pgnFile = element('pgn-file') as HTMLInputElement;
 const punishToggle = element('punish-toggle') as HTMLInputElement;
+const keepToggle = element('keep') as HTMLInputElement;
 const evaluateBox = element('evaluate-box');
 const evaluateToggle = element('evaluate') as HTMLInputElement;
 const promotionBox = element('promotion');
@@ -179,7 +180,7 @@ async function main(): Promise<void> {
   const engine = new Engine(`${import.meta.env.BASE_URL}engine/stockfish-18-lite-single.js`);
   const cache = new PositionCache();
   const stats = new Stats();
-  /** Positions you have gone wrong in before, kept between sessions. */
+  /** What you got wrong in *this* game, saved and reopened along with it. */
   const memory = new MistakeMemory();
   const library = new GameLibrary();
   let settings = loadSettings();
@@ -540,6 +541,7 @@ async function main(): Promise<void> {
     // The stamp follows the mode rather than the other way round, so stepping
     // out of the branch it was asked for turns it off here too.
     punishToggle.checked = punishing();
+    keepToggle.checked = settings.saveOnNew;
     buttons.reveal.hidden = !stopped;
     // A toggle, not a door: the board stays yours while the answer is showing.
     buttons.reveal.textContent = showing ? 'Hide' : 'Show me';
@@ -633,6 +635,9 @@ async function main(): Promise<void> {
     cache.clear();
     savedEvals = new Map();
     stats.reset();
+    // Last game's mistakes belong to last game. Openings repeat, and painting
+    // them onto a board you have only just set up says nothing about this game.
+    memory.clear();
     revealed.clear();
     punishFrom = undefined;
     blundersLeft = settings.blundersPerGame;
@@ -1033,6 +1038,7 @@ async function main(): Promise<void> {
       start: tree.root.fen,
       ...(rootEval ? { rootEval } : {}),
       nodes: serialiseTree(tree, node => evalOf(node.fen) ?? savedEvals.get(node.id)),
+      mistakes: memory.toStored(),
     });
     games.render();
     status(`Saved as “${saved.name}”. Rename it under Saved games.`);
@@ -1065,6 +1071,7 @@ async function main(): Promise<void> {
     // The searches behind a stored game are gone; only its numbers came back.
     cache.clear();
     stats.reset();
+    memory.restore(game.mistakes);
     revealed.clear();
     punishFrom = undefined;
     spotted = game.metrics.spotted;
@@ -1110,6 +1117,7 @@ async function main(): Promise<void> {
       cache.clear();
       savedEvals = new Map();
       stats.reset();
+      memory.clear();
       revealed.clear();
       punishFrom = undefined;
       spotted = 0;
@@ -1200,6 +1208,16 @@ async function main(): Promise<void> {
       );
       render();
     };
+    keepToggle.onchange = () => {
+      settings = withSaveOnNew(settings, keepToggle.checked);
+      saveSettings(settings);
+      status(
+        keepToggle.checked
+          ? 'New games will keep the one before.'
+          : 'New games will discard the one before.',
+      );
+      render();
+    };
     evaluateToggle.onchange = () => {
       evaluateNew = evaluateToggle.checked;
       render();
@@ -1218,7 +1236,7 @@ async function main(): Promise<void> {
     };
     buttons.forget.onclick = () => {
       memory.clear();
-      status('Forgotten. Nothing held against you.');
+      status('Forgotten. Nothing held against you in this game.');
       render();
     };
     buttons.pgnCopy.onclick = () => {

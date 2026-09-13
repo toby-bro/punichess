@@ -8,6 +8,7 @@ import {
   parseSettings,
   saveSettings,
   withColour,
+  withSaveOnNew,
   withSetting,
 } from './settings.ts';
 
@@ -171,5 +172,29 @@ describe('storage', () => {
     assert.doesNotThrow(() => {
       saveSettings(DEFAULT_SETTINGS, broken);
     });
+  });
+});
+
+describe('saveOnNew', () => {
+  it('keeps the previous game by default', () => {
+    assert.equal(DEFAULT_SETTINGS.saveOnNew, true);
+  });
+
+  it('turns off and back on', () => {
+    const off = withSaveOnNew(DEFAULT_SETTINGS, false);
+    assert.equal(off.saveOnNew, false);
+    assert.equal(withSaveOnNew(off, true).saveOnNew, true);
+  });
+
+  it('keeps what is already in force when the stored value is unusable', () => {
+    const off = withSaveOnNew(DEFAULT_SETTINGS, false);
+    assert.equal(parseSettings({ saveOnNew: 'no' }, off).saveOnNew, false);
+    assert.equal(parseSettings({}, off).saveOnNew, false);
+  });
+
+  it('survives a round trip through storage', () => {
+    const storage = fakeStorage();
+    saveSettings(withSaveOnNew(DEFAULT_SETTINGS, false), storage);
+    assert.equal(loadSettings(storage).saveOnNew, false);
   });
 });
