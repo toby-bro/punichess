@@ -992,16 +992,25 @@ async function main(): Promise<void> {
   }
 
   /**
-   * Put the chosen set on the board.
+   * Put the chosen set on the board -- and on the promotion picker.
    *
    * A class rather than a stylesheet swap: chessground only ever adds classes to
    * the element it was given, so this survives everything it does to the board.
+   *
+   * The picker is a second cg-wrap of its own, outside the board, so it needs
+   * telling separately. Without that it fell through to the built-in set that
+   * ships with chessground, and offered you a queen in pieces you had not chosen
+   * and would not get.
    */
   function applyAppearance(): void {
-    const board = element('board');
-    for (const set of PIECE_SETS) board.classList.toggle(`set-${set}`, set === settings.pieceSet);
+    const boardEl = element('board');
+    for (const wrap of [boardEl, promotionBox]) {
+      for (const set of PIECE_SETS) {
+        wrap.classList.toggle(`set-${set}`, set === settings.pieceSet);
+      }
+    }
     for (const theme of BOARD_THEMES) {
-      board.classList.toggle(`board-${theme}`, theme === settings.boardTheme);
+      boardEl.classList.toggle(`board-${theme}`, theme === settings.boardTheme);
     }
   }
 
