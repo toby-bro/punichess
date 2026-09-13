@@ -110,19 +110,30 @@ main {
 }
 
 /*
- * The buttons that exist only while you are being stopped.
+ * The buttons that answer the status line: Show me, Punish me, Ignore, Another
+ * move.
  *
- * The row keeps a fixed height and a margin, which is dead space for most of a
- * game -- and dead space above the board pushes the board off centre. So it is
- * taken out of the layout entirely until one of its buttons is shown.
+ * Its height is held whether or not anything is in it. Collapsing it looks like
+ * the tidier choice and is the worse one: the row is inside a band that sizes
+ * the board, so a row that appears shoves the board -- exactly at the moment you
+ * are being asked to look at the board. Forty pixels of empty space is a fair
+ * price for a board that never moves.
+ *
+ * Compact, too. These are read-then-tapped, not hunted for, and full-size
+ * buttons here cost more than the whole evaluation bar.
  */
 .actions {
   justify-content: center;
-  margin-bottom: 0;
+  gap: 8px;
+  min-height: 38px;
+  margin: 0;
 }
 
-.actions:not(:has(button:not([hidden]))) {
-  display: none;
+.actions button {
+  min-height: 34px;
+  min-width: 0;
+  padding: 6px 12px;
+  font-size: 14px;
 }
 
 .board-holder {

@@ -47,31 +47,6 @@
             </div>
           </div>
 
-          <!-- Only ever populated when you are being stopped, so it is empty and
-               takes no room for most of a game. -->
-          <div class="controls actions">
-            <button id="reveal" type="button" hidden>Show me</button>
-            <button
-              id="punish"
-              type="button"
-              hidden
-              title="Play it, and let the bot punish it properly"
-            >
-              Punish me
-            </button>
-            <button id="ignore" type="button" hidden title="Play it anyway and carry on">
-              Ignore
-            </button>
-            <button
-              id="another"
-              type="button"
-              hidden
-              title="Ask for a different move in this position"
-            >
-              Another move
-            </button>
-          </div>
-
           <!-- Always in the layout, even during a game when it says nothing:
                a bar that appears and disappears resizes the board under you. -->
           <div id="eval-bar" aria-hidden="true">
@@ -107,6 +82,32 @@
 
         <div class="under">
           <p id="status">Loading…</p>
+          <!-- The answers to whatever the status line just said. Always in the
+               layout, empty or not: it is below the board, and a row that
+               appears pushes the board off centre exactly when you are being
+               asked to look at it. -->
+          <div class="controls actions">
+            <button id="reveal" type="button" hidden>Show me</button>
+            <button
+              id="punish"
+              type="button"
+              hidden
+              title="Play it, and let the bot punish it properly"
+            >
+              Punish me
+            </button>
+            <button id="ignore" type="button" hidden title="Play it anyway and carry on">
+              Ignore
+            </button>
+            <button
+              id="another"
+              type="button"
+              hidden
+              title="Ask for a different move in this position"
+            >
+              Another move
+            </button>
+          </div>
         </div>
       </div>
 
