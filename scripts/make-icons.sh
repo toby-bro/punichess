@@ -18,4 +18,8 @@ render icons/icon.svg          48  public/favicon.png
 render icons/icon.svg         180  public/apple-touch-icon.png
 render icons/icon.svg         192  public/icon-192.png
 render icons/icon.svg         512  public/icon-512.png
-render icons/icon-maskable.svg 512 public/icon-512-maskable.png
+render icons/icon-maskable.svg 512  public/icon-512-maskable.png
+# Android's splash canvas is 240dp, which is 720px on a 3x phone and more on a
+# 4x one. A 512 maskable is upscaled to fill it, and upscaling is what made the
+# icon look soft the moment the app opened.
+render icons/icon-maskable.svg 1024 public/icon-1024-maskable.png

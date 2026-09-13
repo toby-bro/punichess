@@ -383,14 +383,21 @@ it. The script is not part of the build: it needs `rsvg-convert`, which nothing
 else here needs, and the icons change about once a year, so the PNGs are
 committed and neither the build nor a contributor has to have the tool.
 
-There are two drawings rather than one file used twice. A maskable icon is
-cropped to the circle inscribed in the middle 80%, so it is scaled to fit that
-and runs its background to the edges for the mask to cut; relabelling the plain
-icon as maskable, which is what the manifest used to do, clips the knight's ears.
-Both are scaled by probing the rendered pixels for the largest size that still
-fits — the bounding box is a wide, low rectangle with empty corners, and
-reserving room for those corners is what left the maskable icon swimming in
-black.
+There are two drawings rather than one file used twice, and the maskable one is
+fitted to a tighter circle than the maskable spec asks for. The launcher promises
+the circle inscribed in the middle 80%; Android's splash screen shows only the
+**inner two thirds** of an adaptive icon that has a background. Sized to the first
+it looks right in the app list and loses its ears the moment the app opens, so it
+is sized to the second and survives both.
+
+It also ships at 1024. The splash canvas is 240dp, which is 720px on a 3x phone
+and more on a 4x one, so a 512 icon is upscaled exactly where the icon is
+largest and most looked at.
+
+Sizes are found by probing the rendered pixels for the largest that still fits,
+not from the bounding box: the box is a wide, low rectangle whose corners are
+empty, and reserving room for ink that is not there is what left the maskable
+icon swimming in black.
 
 ### The one thing that is not offline
 

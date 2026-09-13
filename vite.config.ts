@@ -24,6 +24,32 @@ export default defineConfig({
         // The engine is ~7.3MB and must be precached or the app is not offline.
         maximumFileSizeToCacheInBytes: 12 * 1024 * 1024,
         globPatterns: ['**/*.{js,css,html,wasm,svg,png,woff2}'],
+        // The title's font is the only thing fetched over the network, and
+        // nothing was keeping it. Every load asked Google for it again, so the
+        // title fell back to the system font whenever the request was slow,
+        // offline, or refused -- and a browser with tracker blocking on, which
+        // Samsung Internet ships with, refuses it every time.
+        //
+        // Cached once and reused: the stylesheet is revalidated in the
+        // background so a face that has been seen once keeps working with no
+        // network at all, and the font files themselves never change, so they
+        // are served from the cache outright.
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\//,
+            handler: 'StaleWhileRevalidate',
+            options: { cacheName: 'google-fonts-stylesheets' },
+          },
+          {
+            urlPattern: /^https:\/\/fonts\.gstatic\.com\//,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts-files',
+              cacheableResponse: { statuses: [0, 200] },
+              expiration: { maxEntries: 40, maxAgeSeconds: 60 * 60 * 24 * 365 },
+            },
+          },
+        ],
       },
       manifest: {
         name: 'Punichess',
@@ -44,6 +70,15 @@ export default defineConfig({
           {
             src: 'icon-512-maskable.png',
             sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+          // The splash screen draws the icon on a 240dp canvas, which is 720px
+          // on a 3x phone, so 512 gets upscaled and looks soft exactly when the
+          // app opens.
+          {
+            src: 'icon-1024-maskable.png',
+            sizes: '1024x1024',
             type: 'image/png',
             purpose: 'maskable',
           },
