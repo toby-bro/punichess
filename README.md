@@ -257,11 +257,41 @@ Unit tests feed fabricated search output to the pure logic. The engine test prov
 Stockfish actually emits what the parser expects, and that the thresholds behave on
 real positions.
 
+## Pieces
+
+Eight piece sets ship with the app; pick one under _Bot settings_ and it is
+remembered on that device. They are **bundled, not fetched**: pieces that arrive
+over the network are pieces that do not arrive on a train, and playing offline is
+the point. All eight together cost about 266 KB next to the engine's 7.1 MB.
+
+Every one is licensed compatibly with this project, and all come from the
+[lichess piece sets](https://github.com/lichess-org/lila/tree/master/public/piece):
+
+| set        | author                                                            | licence    |
+| ---------- | ----------------------------------------------------------------- | ---------- |
+| cburnett   | [Colin M.L. Burnett](https://en.wikipedia.org/wiki/User:Cburnett) | GPLv2+     |
+| merida     | Armando Hernandez Marroquin                                       | GPLv2+     |
+| chessnut   | [Alexis Luengas](https://github.com/LexLuengas/chessnut-pieces)   | Apache-2.0 |
+| fantasy    | [Maurizio Monge](https://github.com/maurimo/chess-art)            | MIT        |
+| celtic     | [Maurizio Monge](https://github.com/maurimo/chess-art)            | MIT        |
+| spatial    | [Maurizio Monge](https://github.com/maurimo/chess-art)            | MIT        |
+| mpchess    | [Maxime Chupin](https://github.com/chupinmaxime)                  | GPLv3+     |
+| kiwen-suwi | [neverRare](https://github.com/neverRare)                         | CC BY 4.0  |
+
+Lichess's other sets — staunty, maestro, gioco, cardinal, fresca, dubrovny and
+most of the rest — are **CC BY-NC-SA**. The non-commercial clause makes them
+non-free and incompatible with the GPL, so however good they look they cannot
+ship here. `scripts/vendor-pieces.mjs` adds a set and regenerates the stylesheet;
+check the licence before using it.
+
 ## Licence
 
 **GPL-3.0-or-later** ([LICENSE](LICENSE)), and not by choice: Stockfish,
 chessground and chessops are all GPL and all get bundled into the page, which
 makes this a combined work.
+
+The piece images are third-party assets under the licences listed above, each
+retaining its own; everything else is this project's.
 
 No lichess source code was copied — everything under `src/` was written here.
 Two of the libraries (chessground, chessops) come from the lichess project and

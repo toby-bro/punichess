@@ -11,11 +11,33 @@ const STORAGE_KEY = 'punichess.settings';
 import type { Color } from 'chessops/types';
 
 /** The fields that are plain tunable numbers, as opposed to a choice. */
-export type NumericSetting = Exclude<keyof Settings, 'playAs' | 'saveOnNew'>;
+export type NumericSetting = Exclude<keyof Settings, 'playAs' | 'saveOnNew' | 'pieceSet'>;
+
+/**
+ * The piece sets that ship with the app, in the order they are offered.
+ *
+ * Bundled rather than fetched: pieces that arrive over the network are pieces
+ * that do not arrive on a train, and playing offline is the point. Every one is
+ * licensed compatibly with this project -- see README.
+ */
+export const PIECE_SETS = [
+  'cburnett',
+  'merida',
+  'chessnut',
+  'fantasy',
+  'celtic',
+  'spatial',
+  'mpchess',
+  'kiwen-suwi',
+] as const;
+
+export type PieceSet = (typeof PIECE_SETS)[number];
 
 export interface Settings {
   /** The colour you play. The bot takes the other one. */
   readonly playAs: Color;
+  /** Which pieces to draw. Yours, on this device.  */
+  readonly pieceSet: PieceSet;
   /**
    * Save the game in progress when starting a new one.
    *
@@ -61,6 +83,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   playAs: 'white',
+  pieceSet: 'merida',
   saveOnNew: true,
   targetAcpl: 25,
   quietBand: 100,
@@ -147,6 +170,12 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
   const saveOnNew = source['saveOnNew'];
   result.saveOnNew = typeof saveOnNew === 'boolean' ? saveOnNew : base.saveOnNew;
 
+  // Checked against the list rather than taken on trust: the value ends up in a
+  // class name, and a set that was removed since it was chosen must not leave
+  // the board with no pieces on it.
+  const pieceSet = source['pieceSet'];
+  result.pieceSet = PIECE_SETS.find(known => known === pieceSet) ?? base.pieceSet;
+
   for (const key of Object.keys(LIMITS) as NumericSetting[]) {
     const value = source[key];
     if (typeof value === 'number' && Number.isFinite(value)) {
@@ -165,6 +194,12 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
 /** Apply a numeric change, clamped and consistent. */
 export const withSetting = (settings: Settings, key: NumericSetting, value: number): Settings =>
   parseSettings({ ...settings, [key]: value }, settings);
+
+/** Choose the pieces. */
+export const withPieceSet = (settings: Settings, pieceSet: PieceSet): Settings => ({
+  ...settings,
+  pieceSet,
+});
 
 /** Keep, or stop keeping, the game in progress when a new one starts. */
 export const withSaveOnNew = (settings: Settings, saveOnNew: boolean): Settings => ({

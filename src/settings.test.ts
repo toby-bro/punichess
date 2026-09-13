@@ -3,11 +3,13 @@ import { describe, it } from 'node:test';
 
 import {
   DEFAULT_SETTINGS,
+  PIECE_SETS,
   PRESETS,
   loadSettings,
   parseSettings,
   saveSettings,
   withColour,
+  withPieceSet,
   withSaveOnNew,
   withSetting,
 } from './settings.ts';
@@ -196,5 +198,41 @@ describe('saveOnNew', () => {
     const storage = fakeStorage();
     saveSettings(withSaveOnNew(DEFAULT_SETTINGS, false), storage);
     assert.equal(loadSettings(storage).saveOnNew, false);
+  });
+});
+
+describe('pieceSet', () => {
+  it('defaults to one that ships', () => {
+    assert.ok(PIECE_SETS.includes(DEFAULT_SETTINGS.pieceSet));
+  });
+
+  it('accepts any set that ships', () => {
+    for (const set of PIECE_SETS) {
+      assert.equal(withPieceSet(DEFAULT_SETTINGS, set).pieceSet, set);
+    }
+  });
+
+  it('refuses one that does not', () => {
+    // The value becomes a class name. A set removed since it was chosen must not
+    // leave the board with no pieces on it.
+    for (const junk of ['staunty', '', 42, null, undefined, {}]) {
+      assert.equal(parseSettings({ pieceSet: junk }).pieceSet, DEFAULT_SETTINGS.pieceSet);
+    }
+  });
+
+  it('keeps the one in force when the stored value is unusable', () => {
+    const chosen = withPieceSet(DEFAULT_SETTINGS, 'celtic');
+    assert.equal(parseSettings({ pieceSet: 'nonsense' }, chosen).pieceSet, 'celtic');
+  });
+
+  it('survives a round trip through storage', () => {
+    const storage = fakeStorage();
+    saveSettings(withPieceSet(DEFAULT_SETTINGS, 'mpchess'), storage);
+    assert.equal(loadSettings(storage).pieceSet, 'mpchess');
+  });
+
+  it('leaves the other settings alone', () => {
+    const changed = withPieceSet(withSetting(DEFAULT_SETTINGS, 'targetAcpl', 55), 'fantasy');
+    assert.equal(changed.targetAcpl, 55);
   });
 });

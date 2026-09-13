@@ -380,6 +380,44 @@ button:disabled {
   pointer-events: none;
 }
 
+/* The piece picker: two pieces from each set on a board-coloured square, which
+   is the only description of a piece set anybody can actually read. */
+.piece-sets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.piece-set {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 0;
+  padding: 4px 6px;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: #b58863;
+  cursor: pointer;
+}
+
+.piece-set[aria-pressed='true'] {
+  border-color: #6f8f5f;
+  background: #f0d9b5;
+}
+
+.piece-set piece {
+  position: static;
+  display: block;
+  width: 28px;
+  height: 28px;
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
 /* A two-state slider. The label is the hit area, so the whole thing is tappable. */
 .switch {
   display: inline-flex;

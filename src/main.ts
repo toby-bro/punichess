@@ -1,4 +1,5 @@
 import './style.css';
+import './pieces.css';
 
 import { Chessground } from 'chessground';
 import type { Api } from 'chessground/api';
@@ -56,7 +57,7 @@ import {
 import { formatEval, renderReview } from './review-view.ts';
 import { reviewGame } from './review.ts';
 import { mountSettings } from './settings-panel.ts';
-import { loadSettings, saveSettings, withColour, withSaveOnNew } from './settings.ts';
+import { PIECE_SETS, loadSettings, saveSettings, withColour, withSaveOnNew } from './settings.ts';
 import { Stats } from './stats.ts';
 import { GameTree } from './tree.ts';
 import type { PvLine } from './uci.ts';
@@ -333,7 +334,10 @@ async function main(): Promise<void> {
     blundersLeft += changed.blundersPerGame - settings.blundersPerGame;
     settings = changed;
     saveSettings(settings);
+    applyPieceSet();
   });
+
+  applyPieceSet();
 
   status('Loading engine…');
   await engine.init();
@@ -1021,6 +1025,17 @@ async function main(): Promise<void> {
   function wantsError(): boolean {
     if (blundersLeft <= 0 || tree.current.ply < settings.blunderFromPly) return false;
     return Math.random() < settings.blunderChance;
+  }
+
+  /**
+   * Put the chosen set on the board.
+   *
+   * A class rather than a stylesheet swap: chessground only ever adds classes to
+   * the element it was given, so this survives everything it does to the board.
+   */
+  function applyPieceSet(): void {
+    const board = element('board');
+    for (const set of PIECE_SETS) board.classList.toggle(`set-${set}`, set === settings.pieceSet);
   }
 
   /** Stop accepting moves without touching the position already on the board. */

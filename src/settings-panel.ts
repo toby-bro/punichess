@@ -5,7 +5,15 @@
  * report an edited one, and nothing about chess.
  */
 
-import { type NumericSetting, PRESETS, type Settings, withSetting } from './settings.ts';
+import {
+  type NumericSetting,
+  PIECE_SETS,
+  PRESETS,
+  type PieceSet,
+  type Settings,
+  withPieceSet,
+  withSetting,
+} from './settings.ts';
 
 interface Field {
   readonly key: NumericSetting;
@@ -137,16 +145,44 @@ export function mountSettings(
 
   const readouts = new Map<NumericSetting, HTMLElement>();
   const inputs = new Map<NumericSetting, HTMLInputElement>();
+  const pieceButtons = new Map<PieceSet, HTMLButtonElement>();
 
   /** Redraw every field: clamping one value can move a neighbour too. */
   function update(settings: Settings): void {
     current = settings;
+    for (const [set, button] of pieceButtons) {
+      button.setAttribute('aria-pressed', String(set === settings.pieceSet));
+    }
     for (const field of FIELDS) {
       readouts.get(field.key)?.replaceChildren(field.format(settings[field.key]));
       const input = inputs.get(field.key);
       if (input) input.value = String(settings[field.key]);
     }
   }
+
+  // Shown as pieces, not as a list of names: "mpchess" and "kiwen-suwi" tell
+  // you nothing, and a knight tells you everything.
+  const pieces = document.createElement('div');
+  pieces.className = 'piece-sets';
+  for (const set of PIECE_SETS) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `piece-set cg-wrap set-${set}`;
+    button.title = set;
+    for (const role of ['king', 'knight']) {
+      const piece = document.createElement('piece');
+      piece.className = `${role} white`;
+      button.append(piece);
+    }
+    button.onclick = () => {
+      current = withPieceSet(current, set);
+      update(current);
+      onChange(current);
+    };
+    pieceButtons.set(set, button);
+    pieces.append(button);
+  }
+  root.append(pieces);
 
   const presets = document.createElement('div');
   presets.className = 'presets';
