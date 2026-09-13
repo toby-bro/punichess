@@ -38,7 +38,15 @@ export default defineConfig({
         icons: [
           { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
-          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          // Its own drawing, not the same file relabelled: a maskable icon is
+          // cropped to the circle inside the middle 80%, so it is scaled to fit
+          // that and runs its background to the edges for the mask to cut.
+          {
+            src: 'icon-512-maskable.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
         ],
       },
     }),

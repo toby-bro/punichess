@@ -10,7 +10,11 @@
       punish it. Runs entirely on your phone, offline, with Stockfish in a web worker."
     />
     <link rel="canonical" href="https://punichess.toby.re/" />
-    <link rel="icon" href="/favicon.png" />
+    <!-- The svg is what browsers that can use it should use: one file, sharp at
+         every size. The png is for the ones that cannot. -->
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.png" sizes="48x48" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
     <!-- What a shared link looks like. Worth more than any amount of sitemap
          for a site that is one page and has almost no text to index. -->

@@ -372,6 +372,26 @@ name and two hex values.
 
 The default set is **staunty**.
 
+### The icon
+
+A knight toppled in a pool of blood, drawn from cburnett's knight — the same
+piece set the app ships, so the icon and the board agree with each other, and
+GPLv2+ like everything else here.
+
+`icons/icon.svg` is the source and `scripts/make-icons.sh` renders every PNG from
+it. The script is not part of the build: it needs `rsvg-convert`, which nothing
+else here needs, and the icons change about once a year, so the PNGs are
+committed and neither the build nor a contributor has to have the tool.
+
+There are two drawings rather than one file used twice. A maskable icon is
+cropped to the circle inscribed in the middle 80%, so it is scaled to fit that
+and runs its background to the edges for the mask to cut; relabelling the plain
+icon as maskable, which is what the manifest used to do, clips the knight's ears.
+Both are scaled by probing the rendered pixels for the largest size that still
+fits — the bounding box is a wide, low rectangle with empty corners, and
+reserving room for those corners is what left the maskable icon swimming in
+black.
+
 ### The one thing that is not offline
 
 The title is set in one of 117 cartoon faces, picked at random on every load
