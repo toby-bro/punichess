@@ -25,6 +25,8 @@ export default defineConfig({
       manifest: {
         name: 'Punichess',
         short_name: 'Punichess',
+        description:
+          'A chess bot that blunders on purpose and stops you the moment you fail to punish it.',
         start_url: '.',
         display: 'fullscreen',
         orientation: 'portrait',
