@@ -30,21 +30,58 @@ body {
 }
 
 main {
-  max-width: min(100vw, 100svh - 12rem);
+  /* The board is as wide as the screen allows, less a hair so it is not flush
+     against the glass. Capped by height as well, or a wide desktop window would
+     hand back a board taller than the viewport. The reserve covers the two bands
+     above and below it. */
+  max-width: min(100vw, 100svh - 14rem);
   margin: 0 auto;
-  padding: 12px;
+  padding: 0 3px 12px;
+}
+
+/*
+ * The first screenful: a band, the board, a band.
+ *
+ * Both bands are `flex: 1 1 0`, so they take an equal share of whatever is left
+ * over and the board sits exactly in the middle of the screen whatever the
+ * screen is -- which is where a thumb is, and where it was not before. The band
+ * above holds the name, the move controls and the evaluation bar; the one below
+ * holds the line that tells you what just happened. Everything else starts below
+ * the fold, where scrolling to it is a deliberate act.
+ */
+.stage {
+  min-height: calc(100svh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+}
+
+.top,
+.under {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
 }
 
 .board-row {
-  display: flex;
-  align-items: stretch;
-  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* Small, quiet, and above the controls: it says which app this is and then gets
+   out of the way of the only thing on the screen that matters. */
+.brand {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
+  text-align: center;
 }
 
 .board-holder {
   position: relative;
-  flex: 1 1 auto;
-  min-width: 0;
   /* So the coordinates can be sized as a fraction of the board rather than in
      fixed pixels. A square is 12.5cqw whatever the screen. */
   container-type: inline-size;
@@ -172,38 +209,48 @@ cg-board square.premove-dest:hover {
   padding: 0 0.5cqw 0.35cqw 0;
 }
 
-/* Only ever shown with the review open. During a game it would announce the
-   blunder you were supposed to notice for yourself. */
+/*
+ * The evaluation bar, above the board and across it.
+ *
+ * Its contents are only ever filled in with the review open -- during a game it
+ * would announce the blunder you were supposed to notice for yourself -- but the
+ * bar keeps its place in the layout at all times. It used to stand beside the
+ * board and come and go, which resized the board underneath you the moment you
+ * opened the review.
+ */
 #eval-bar {
   position: relative;
-  flex: 0 0 18px;
+  height: 16px;
   background: #46443f;
   border-radius: 3px;
   overflow: hidden;
+  /* Not `hidden`: the space is the point. */
+  visibility: hidden;
 }
 
-#eval-bar[hidden] {
-  display: none;
+#eval-bar.showing {
+  visibility: visible;
 }
 
 #eval-fill {
   position: absolute;
-  inset: auto 0 0 0;
+  inset: 0 auto 0 0;
   background: #eceade;
-  transition: height 0.2s ease;
+  transition: width 0.2s ease;
 }
 
 #eval-text {
   position: absolute;
-  inset: 2px 0 auto 0;
-  text-align: center;
-  font-size: 9px;
+  inset: 0 6px auto auto;
+  line-height: 16px;
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
   color: var(--fg);
 }
 
-#eval-text.low {
-  inset: auto 0 2px 0;
+/* When your share has grown past the label, the label is sitting on the light
+   part of the bar and has to change colour to stay readable. */
+#eval-text.over {
   color: #2a2926;
 }
 

@@ -477,7 +477,7 @@ async function main(): Promise<void> {
   }
 
   /**
-   * The evaluation bar beside the board.
+   * The evaluation bar above the board.
    *
    * Shown only with the review open, and only for a position already searched.
    * Step off the reviewed game into something new and it goes away, because the
@@ -487,7 +487,7 @@ async function main(): Promise<void> {
   function renderEval(fen: string): void {
     evaluateBox.hidden = !reviewing;
     const best = reviewing ? (evalOf(fen) ?? savedEvals.get(tree.current.id)) : undefined;
-    evalBar.hidden = !best;
+    evalBar.classList.toggle('showing', !!best);
     if (!best) {
       if (reviewing && evaluateNew) evaluateSoon(fen);
       return;
@@ -500,10 +500,11 @@ async function main(): Promise<void> {
     const whiteShare = winPercent(whiteCp);
     const share = you === 'white' ? whiteShare : 100 - whiteShare;
 
-    evalFill.style.height = `${share}%`;
+    evalFill.style.width = `${share}%`;
     evalText.textContent = formatEval(whiteCp, whiteMate);
-    // The label sits on the dark part of the bar, wherever that currently is.
-    evalText.classList.toggle('low', share > 60);
+    // The label sits at the right-hand end, which is dark until your share grows
+    // far enough to reach it.
+    evalText.classList.toggle('over', share > 85);
   }
 
   /**

@@ -9,65 +9,85 @@
   </head>
   <body>
     <main>
-      <div class="board-row">
-        <div class="board-holder">
-          <div id="board"></div>
-          <!-- Over the pawn, as pieces. Inside a cg-wrap so the board's own
-               piece images apply to it. -->
-          <div id="promotion" class="cg-wrap promotion" hidden>
-            <div id="promotion-veil" class="promotion-veil"></div>
-            <div id="promotion-choices" class="promotion-choices">
-              <button type="button" class="promotion-choice" data-role="q" aria-label="Queen">
-                <piece class="queen"></piece>
-              </button>
-              <button type="button" class="promotion-choice" data-role="r" aria-label="Rook">
-                <piece class="rook"></piece>
-              </button>
-              <button type="button" class="promotion-choice" data-role="b" aria-label="Bishop">
-                <piece class="bishop"></piece>
-              </button>
-              <button type="button" class="promotion-choice" data-role="n" aria-label="Knight">
-                <piece class="knight"></piece>
-              </button>
+      <div class="stage">
+        <div class="top">
+          <h1 class="brand">Punichess</h1>
+          <div class="controls">
+            <button id="first" type="button" title="Start (Home)" aria-label="Go to start">
+              ⏮
+            </button>
+            <button id="back" type="button" title="Back (←)" aria-label="Previous move">◀</button>
+            <button id="forward" type="button" title="Forward (→)" aria-label="Next move">▶</button>
+            <button id="last" type="button" title="Latest (End)" aria-label="Go to latest">
+              ⏭
+            </button>
+            <span class="spacer"></span>
+            <button id="reveal" type="button" hidden>Show me</button>
+            <button
+              id="punish"
+              type="button"
+              hidden
+              title="Play it, and let the bot punish it properly"
+            >
+              Punish me
+            </button>
+            <button id="ignore" type="button" hidden title="Play it anyway and carry on">
+              Ignore
+            </button>
+            <button
+              id="another"
+              type="button"
+              hidden
+              title="Ask for a different move in this position"
+            >
+              Another move
+            </button>
+            <label
+              class="switch stamp"
+              id="punish-box"
+              title="The bot answers with best moves only, from here down this branch"
+            >
+              <input id="punish-toggle" type="checkbox" />
+              <span class="track"></span>
+              Punishing
+            </label>
+          </div>
+          <!-- Always in the layout, even during a game when it says nothing:
+               a bar that appears and disappears resizes the board under you. -->
+          <div id="eval-bar" aria-hidden="true">
+            <div id="eval-fill"></div>
+            <span id="eval-text"></span>
+          </div>
+        </div>
+
+        <div class="board-row">
+          <div class="board-holder">
+            <div id="board"></div>
+            <!-- Over the pawn, as pieces. Inside a cg-wrap so the board's own
+                 piece images apply to it. -->
+            <div id="promotion" class="cg-wrap promotion" hidden>
+              <div id="promotion-veil" class="promotion-veil"></div>
+              <div id="promotion-choices" class="promotion-choices">
+                <button type="button" class="promotion-choice" data-role="q" aria-label="Queen">
+                  <piece class="queen"></piece>
+                </button>
+                <button type="button" class="promotion-choice" data-role="r" aria-label="Rook">
+                  <piece class="rook"></piece>
+                </button>
+                <button type="button" class="promotion-choice" data-role="b" aria-label="Bishop">
+                  <piece class="bishop"></piece>
+                </button>
+                <button type="button" class="promotion-choice" data-role="n" aria-label="Knight">
+                  <piece class="knight"></piece>
+                </button>
+              </div>
             </div>
           </div>
         </div>
-        <div id="eval-bar" hidden>
-          <div id="eval-fill"></div>
-          <span id="eval-text"></span>
+
+        <div class="under">
+          <p id="status">Loading…</p>
         </div>
-      </div>
-
-      <p id="status">Loading…</p>
-
-      <div class="controls">
-        <button id="first" type="button" title="Start (Home)" aria-label="Go to start">⏮</button>
-        <button id="back" type="button" title="Back (←)" aria-label="Previous move">◀</button>
-        <button id="forward" type="button" title="Forward (→)" aria-label="Next move">▶</button>
-        <button id="last" type="button" title="Latest (End)" aria-label="Go to latest">⏭</button>
-        <span class="spacer"></span>
-        <button id="reveal" type="button" hidden>Show me</button>
-        <button
-          id="punish"
-          type="button"
-          hidden
-          title="Play it, and let the bot punish it properly"
-        >
-          Punish me
-        </button>
-        <button id="ignore" type="button" hidden title="Play it anyway and carry on">Ignore</button>
-        <button id="another" type="button" hidden title="Ask for a different move in this position">
-          Another move
-        </button>
-        <label
-          class="switch stamp"
-          id="punish-box"
-          title="The bot answers with best moves only, from here down this branch"
-        >
-          <input id="punish-toggle" type="checkbox" />
-          <span class="track"></span>
-          Punishing
-        </label>
       </div>
 
       <div id="moves" class="moves" aria-label="Moves played"></div>
