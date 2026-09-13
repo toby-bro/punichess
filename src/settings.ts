@@ -104,7 +104,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   playAs: 'white',
-  pieceSet: 'merida',
+  pieceSet: 'staunty',
   boardTheme: 'brown',
   saveOnNew: true,
   targetAcpl: 25,

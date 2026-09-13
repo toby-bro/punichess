@@ -5,23 +5,52 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#161512" />
     <link rel="icon" href="/favicon.png" />
+    <!-- The one thing on the page that comes over the network. It is the title
+         and nothing else, so offline it falls back to the system font and the
+         game is unaffected. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap"
+    />
     <title>Punichess</title>
   </head>
   <body>
     <main>
       <div class="stage">
         <div class="top">
-          <h1 class="brand">Punichess</h1>
-          <div class="controls">
-            <button id="first" type="button" title="Start (Home)" aria-label="Go to start">
-              ⏮
-            </button>
-            <button id="back" type="button" title="Back (←)" aria-label="Previous move">◀</button>
-            <button id="forward" type="button" title="Forward (→)" aria-label="Next move">▶</button>
-            <button id="last" type="button" title="Latest (End)" aria-label="Go to latest">
-              ⏭
-            </button>
-            <span class="spacer"></span>
+          <!-- Name, toggle, arrows. A grid rather than a flex row with
+               spacers, so the toggle is placed by the layout instead of by
+               whatever width the other two happen to have. -->
+          <div class="header">
+            <h1 class="brand">Punichess</h1>
+            <label
+              class="switch stamp"
+              id="punish-box"
+              title="The bot answers with best moves only, from here down this branch"
+            >
+              <input id="punish-toggle" type="checkbox" />
+              <span class="track"></span>
+              Punishing
+            </label>
+            <div class="nav">
+              <button id="first" type="button" title="Start (Home)" aria-label="Go to start">
+                ⏮
+              </button>
+              <button id="back" type="button" title="Back (←)" aria-label="Previous move">◀</button>
+              <button id="forward" type="button" title="Forward (→)" aria-label="Next move">
+                ▶
+              </button>
+              <button id="last" type="button" title="Latest (End)" aria-label="Go to latest">
+                ⏭
+              </button>
+            </div>
+          </div>
+
+          <!-- Only ever populated when you are being stopped, so it is empty and
+               takes no room for most of a game. -->
+          <div class="controls actions">
             <button id="reveal" type="button" hidden>Show me</button>
             <button
               id="punish"
@@ -42,16 +71,8 @@
             >
               Another move
             </button>
-            <label
-              class="switch stamp"
-              id="punish-box"
-              title="The bot answers with best moves only, from here down this branch"
-            >
-              <input id="punish-toggle" type="checkbox" />
-              <span class="track"></span>
-              Punishing
-            </label>
           </div>
+
           <!-- Always in the layout, even during a game when it says nothing:
                a bar that appears and disappears resizes the board under you. -->
           <div id="eval-bar" aria-hidden="true">

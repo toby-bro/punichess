@@ -323,6 +323,17 @@ Board colours are written rather than fetched — a board is two colours, so the
 is nothing to download and nobody to credit. `scripts/vendor-boards.mjs` takes a
 name and two hex values.
 
+The default set is **staunty**.
+
+### The one thing that is not offline
+
+The title in the top-left is set in a webfont fetched from Google Fonts, chosen
+with `--brand-font` in `src/style.css` and linked from `index.html`. It is the
+only thing on the page that comes over the network, and it is a decoration: with
+no connection the link fails, the fallback stack takes over and nothing else
+notices. Google Fonts serves everything under the SIL Open Font License, which
+adds no obligation to the bundle.
+
 The pieces are a different matter. They are **bundled, not fetched**: pieces that
 arrive over the network are pieces that do not arrive on a train, and playing
 offline is the point. All sixteen together cost under a megabyte next to the
