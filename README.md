@@ -383,6 +383,22 @@ it. The script is not part of the build: it needs `rsvg-convert`, which nothing
 else here needs, and the icons change about once a year, so the PNGs are
 committed and neither the build nor a contributor has to have the tool.
 
+#### Why the icon is declared the way it is
+
+Every size ships twice, as separate files: `purpose: any` and `purpose: maskable`.
+Never one file declared `purpose: 'any maskable'` — Chrome's own audit calls that
+out, because the same image then has to serve as both an icon with safe-zone
+padding and one without, and it comes out wrong in one place or the other. It is
+the single most common way to get this wrong.
+
+The remaining oddity is not ours. Samsung Internet has a
+[known bug](https://intercom.help/progressier/en/articles/9795029-about-the-splash-screens-of-pwas-installed-from-samsung-internet):
+it uses the maskable icon on the splash screen and does not scale it to fill,
+so the icon sits in a field of padding. There are two workarounds and this uses
+both — make the artwork fill as much of its canvas as the masks allow, and give
+`background_color` the same colour as the icon's own background, so the padding
+that is left cannot be seen.
+
 There are two drawings rather than one file used twice, and both fill about 88%
 of their canvas. Sizing the maskable one by the rules instead — the circle
 inscribed in the middle 80%, or the inner two thirds the Android splash screen

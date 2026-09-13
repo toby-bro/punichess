@@ -67,6 +67,17 @@ export default defineConfig({
           // Its own drawing, not the same file relabelled: a maskable icon is
           // cropped to the circle inside the middle 80%, so it is scaled to fit
           // that and runs its background to the edges for the mask to cut.
+          // Both purposes at both sizes, as separate files. Never
+          // `purpose: 'any maskable'` on one file: Chrome's own audit calls
+          // that out, because the same image then has to be both an icon with
+          // safe-zone padding and one without, and it ends up wrong in one
+          // place or the other.
+          {
+            src: 'icon-192-maskable.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
           {
             src: 'icon-512-maskable.png',
             sizes: '512x512',
