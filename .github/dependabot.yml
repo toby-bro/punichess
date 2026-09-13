@@ -1,0 +1,33 @@
+# Weekly dependency updates.
+#
+# Three ecosystems, because this repo has three sets of pinned versions and all
+# of them go stale quietly: the npm tree, the workflow actions, and the Docker
+# base image.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    # Minor and patch bumps arrive as one pull request a week rather than a
+    # dozen. Majors stay separate: those are the ones worth reading.
+    groups:
+      minor-and-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
+
+  # The actions were all a major or two behind before anyone noticed, which is
+  # exactly the kind of drift nobody goes looking for.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+
+  # node:24-slim, which moves underneath us as patches land.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
