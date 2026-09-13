@@ -218,3 +218,109 @@ describe('GameLibrary', () => {
     });
   });
 });
+
+describe('favourites', () => {
+  const library = (capacity: number): GameLibrary => new GameLibrary(fakeStorage(), capacity);
+
+  it('marks and unmarks a game', () => {
+    const shelf = library(10);
+    const saved = shelf.save(gameFrom(branched()));
+    assert.equal(shelf.find(saved.id)?.favourite, undefined);
+
+    shelf.setFavourite(saved.id, true);
+    assert.equal(shelf.find(saved.id)?.favourite, true);
+
+    shelf.setFavourite(saved.id, false);
+    assert.equal(shelf.find(saved.id)?.favourite, false);
+  });
+
+  it('purges an ordinary game before a favourite, however old', () => {
+    const shelf = library(2);
+    const keeper = shelf.save({ ...gameFrom(branched()), name: 'keeper' }, 1);
+    shelf.setFavourite(keeper.id, true);
+    shelf.save({ ...gameFrom(branched()), name: 'b' }, 2);
+    shelf.save({ ...gameFrom(branched()), name: 'c' }, 3);
+
+    assert.deepEqual(
+      shelf.games.map(game => game.name),
+      ['c', 'keeper'],
+      'the oldest survived because it was kept',
+    );
+  });
+
+  it('still lists the newest first, favourite or not', () => {
+    const shelf = library(10);
+    const old = shelf.save({ ...gameFrom(branched()), name: 'old' }, 1);
+    shelf.setFavourite(old.id, true);
+    shelf.save({ ...gameFrom(branched()), name: 'new' }, 2);
+    assert.deepEqual(
+      shelf.games.map(game => game.name),
+      ['new', 'old'],
+    );
+  });
+
+  it('gives up a favourite only when there is nothing else left', () => {
+    const shelf = library(2);
+    const first = shelf.save({ ...gameFrom(branched()), name: 'a' }, 1);
+    const second = shelf.save({ ...gameFrom(branched()), name: 'b' }, 2);
+    shelf.setFavourite(first.id, true);
+    shelf.setFavourite(second.id, true);
+    shelf.save({ ...gameFrom(branched()), name: 'c' }, 3);
+
+    assert.equal(shelf.size, 2);
+    assert.deepEqual(
+      shelf.games.map(game => game.name),
+      ['c', 'b'],
+      'the oldest favourite went, since everything was a favourite',
+    );
+  });
+
+  it('survives being reopened', () => {
+    const storage = fakeStorage();
+    const shelf = new GameLibrary(storage);
+    const saved = shelf.save(gameFrom(branched()));
+    shelf.setFavourite(saved.id, true);
+    assert.equal(new GameLibrary(storage).find(saved.id)?.favourite, true);
+  });
+
+  it('sheds ordinary games first when storage runs out', () => {
+    let allow = 400;
+    const storage: Storage = {
+      length: 0,
+      clear: () => undefined,
+      getItem: () => null,
+      key: () => null,
+      removeItem: () => undefined,
+      setItem: (_key, value) => {
+        if (value.length > allow) throw new Error('quota');
+      },
+    };
+    const shelf = new GameLibrary(storage, 10);
+    const keeper = shelf.save({ ...gameFrom(branched()), name: 'keeper' }, 1);
+    shelf.setFavourite(keeper.id, true);
+    for (let i = 0; i < 5; i++) shelf.save({ ...gameFrom(branched()), name: `g${i}` }, i + 2);
+    allow = Number.POSITIVE_INFINITY;
+
+    assert.ok(
+      shelf.games.some(game => game.name === 'keeper'),
+      'the kept game outlasted the ordinary ones',
+    );
+  });
+
+  it('keeps the whole list when storage is simply unavailable', () => {
+    const deny = (): never => {
+      throw new Error('denied');
+    };
+    const storage: Storage = {
+      length: 0,
+      clear: deny,
+      getItem: deny,
+      key: deny,
+      removeItem: deny,
+      setItem: deny,
+    };
+    const shelf = new GameLibrary(storage, 10);
+    for (let i = 0; i < 4; i++) shelf.save({ ...gameFrom(branched()), name: `g${i}` }, i);
+    assert.equal(shelf.size, 4, 'shedding games cannot fix a storage that never works');
+  });
+});

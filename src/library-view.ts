@@ -11,6 +11,7 @@ export interface LibraryActions {
   readonly onLoad: (id: string) => void;
   readonly onRename: (id: string, name: string) => void;
   readonly onDelete: (id: string) => void;
+  readonly onFavourite: (id: string, favourite: boolean) => void;
 }
 
 export interface LibraryView {
@@ -64,6 +65,21 @@ function row(game: SavedGame, actions: LibraryActions): HTMLElement {
   const item = document.createElement('div');
   item.className = 'saved-game';
 
+  const heading = document.createElement('div');
+  heading.className = 'saved-heading';
+
+  // A star rather than a switch: it marks a thing rather than turning one on.
+  const star = document.createElement('button');
+  star.type = 'button';
+  star.className = 'star';
+  const favourite = game.favourite === true;
+  star.textContent = favourite ? '★' : '☆';
+  star.setAttribute('aria-pressed', String(favourite));
+  star.title = favourite ? 'Kept back from any purge' : 'Keep this one';
+  star.onclick = () => {
+    actions.onFavourite(game.id, !favourite);
+  };
+
   const name = document.createElement('input');
   name.className = 'saved-name';
   name.value = game.name;
@@ -100,6 +116,7 @@ function row(game: SavedGame, actions: LibraryActions): HTMLElement {
   };
 
   controls.append(load, remove);
-  item.append(name, meta, controls);
+  heading.append(star, name);
+  item.append(heading, meta, controls);
   return item;
 }

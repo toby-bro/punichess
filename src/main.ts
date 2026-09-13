@@ -253,6 +253,10 @@ async function main(): Promise<void> {
       library.remove(id);
       games.render();
     },
+    onFavourite: (id, favourite) => {
+      library.setFavourite(id, favourite);
+      games.render();
+    },
   });
   const panel = mountSettings(element('settings'), settings, changed => {
     // Raising the allowance mid-game should make more errors possible, not fewer.

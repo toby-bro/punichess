@@ -379,6 +379,28 @@ button:disabled {
   border-top: 1px solid var(--edge);
 }
 
+.saved-heading {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.star {
+  flex: 0 0 auto;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--dim);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.star[aria-pressed='true'] {
+  color: #e3c04a;
+}
+
 .saved-name {
   width: 100%;
   padding: 4px 6px;

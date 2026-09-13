@@ -54,6 +54,8 @@ export interface SavedGame {
   readonly id: string;
   readonly name: string;
   readonly saved: number;
+  /** Kept back from any purge for as long as there is anything else to drop. */
+  readonly favourite?: boolean;
   /** The colour you had. */
   readonly playedAs: 'white' | 'black';
   /** What the bot was set to at the time. */
@@ -200,6 +202,7 @@ function parseGame(raw: unknown): SavedGame | undefined {
     id,
     name: typeof name === 'string' && name.trim().length > 0 ? name : 'Game',
     saved: isFiniteNumber(value['saved']) ? value['saved'] : 0,
+    ...(value['favourite'] === true ? { favourite: true } : {}),
     playedAs: value['playedAs'] === 'black' ? 'black' : 'white',
     settings: (typeof value['settings'] === 'object' && value['settings'] !== null
       ? value['settings']
@@ -237,9 +240,20 @@ export class GameLibrary {
 
   save(game: NewGame, now = Date.now()): SavedGame {
     const stored: SavedGame = { ...game, id: `g${String(now)}-${randomSuffix()}`, saved: now };
-    this.#games = [stored, ...this.#games].slice(0, this.#capacity);
+    this.#games = [stored, ...this.#games];
+    this.#trim(this.#capacity, stored.id);
     this.#write();
     return stored;
+  }
+
+  /** Mark a game as one to keep, or stop doing so. */
+  setFavourite(id: string, favourite: boolean): void {
+    this.#games = this.#games.map(game =>
+      game.id === id
+        ? { ...game, ...(favourite ? { favourite: true } : { favourite: false }) }
+        : game,
+    );
+    this.#write();
   }
 
   rename(id: string, name: string): void {
@@ -265,30 +279,71 @@ export class GameLibrary {
       if (raw === null || raw === undefined) return;
       const parsed: unknown = JSON.parse(raw);
       if (!Array.isArray(parsed)) return;
-      this.#games = parsed
-        .map(parseGame)
-        .filter((game): game is SavedGame => !!game)
-        .slice(0, this.#capacity);
+      this.#games = parsed.map(parseGame).filter((game): game is SavedGame => !!game);
+      this.#trim(this.#capacity);
     } catch {
       this.#games = [];
     }
   }
 
+  /**
+   * Keep the best `limit` games: the one just saved, then favourites, then the
+   * most recent.
+   *
+   * `keepId` is not a nicety. Without it, saving a game into a full shelf of
+   * favourites throws away the game being saved, so pressing save does nothing
+   * at all -- which is the one outcome nobody would expect.
+   *
+   * Selection is by worth; the list itself stays in its own order, newest
+   * first, favourite or not.
+   */
+  #trim(limit: number, keepId?: string): void {
+    if (this.#games.length <= limit) return;
+    const keeping = new Set(
+      [...this.#games]
+        // Stable, so recency still decides within each group.
+        .sort((a, b) => {
+          if (a.id === keepId) return -1;
+          if (b.id === keepId) return 1;
+          return Number(b.favourite ?? false) - Number(a.favourite ?? false);
+        })
+        .slice(0, limit),
+    );
+    this.#games = this.#games.filter(game => keeping.has(game));
+  }
+
   #write(): void {
+    if (this.#persist(this.#games)) return;
+
+    // Out of room. Before giving anything up, check that storage works at all:
+    // if it does not, shedding games would destroy the session's record to fix
+    // a problem it cannot fix.
+    if (!this.#persist([])) return;
+
+    // Give up games one at a time, least loved and oldest first, until it fits.
+    while (this.#games.length > 1) {
+      const victim = this.#expendable();
+      this.#games = this.#games.filter((_, index) => index !== victim);
+      if (this.#persist(this.#games)) return;
+    }
+    this.#persist(this.#games);
+  }
+
+  /** The game to give up first: the oldest that is not a favourite. */
+  #expendable(): number {
+    for (let index = this.#games.length - 1; index >= 0; index--) {
+      if (this.#games[index]?.favourite !== true) return index;
+    }
+    // All of them are favourites, so the oldest has to go after all.
+    return this.#games.length - 1;
+  }
+
+  #persist(games: readonly SavedGame[]): boolean {
     try {
-      this.#storage?.setItem(STORAGE_KEY, JSON.stringify(this.#games));
+      this.#storage?.setItem(STORAGE_KEY, JSON.stringify(games));
+      return true;
     } catch {
-      // Out of room, or storage disabled. Drop the oldest and try once more:
-      // losing the game you just played to save one from last month would be
-      // the wrong way round.
-      if (this.#games.length > 1) {
-        this.#games = this.#games.slice(0, Math.floor(this.#games.length / 2));
-        try {
-          this.#storage?.setItem(STORAGE_KEY, JSON.stringify(this.#games));
-        } catch {
-          // Still no. Keep them in memory for this session.
-        }
-      }
+      return false;
     }
   }
 }
