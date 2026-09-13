@@ -51,6 +51,11 @@ Three ways out:
   so you watch the refutation land instead of being told about it.
 - **Ignore** — play it and carry on as normal.
 
+A **Punishing** stamp shows while the bot is answering with best moves only, with
+a switch to turn it off again without leaving the branch. Where it was switched
+on is recorded on the tree, so returning to that branch later finds it still on,
+and a sibling branch unaffected.
+
 The last two mark the move red in the move tree, because the reason to play a
 bad move on purpose is to come back later and try again. Punishment is scoped to
 the branch it started on: step back above it and the bot goes back to normal.
@@ -60,9 +65,12 @@ network after the first load.
 
 ## Choosing sides
 
-_Play as_ takes White or Black. Picking Black flips the board and the bot opens.
-The choice is remembered, and switching sides starts a fresh game, since carrying
-a half-played position across colours would mean nothing.
+_Swap sides_ hands your colour to the bot and takes its one, **keeping the
+position**. From the starting position that simply means you play Black: the bot
+opens, and the board flips to match.
+
+The choice is remembered, so a new game starts with the colour you last had. Your
+accuracy record follows you rather than staying with the pieces.
 
 ## Settings
 
@@ -110,18 +118,65 @@ position while you were playing, and those searches are remembered, so the revie
 mostly asks for work already done. Only positions it has never seen cost
 anything.
 
+## Saved games
+
+_Save this game_ keeps the whole tree, every variation included, along with
+**everything the engine worked out** while you played — the searches themselves,
+not one number per position. A reopened game therefore costs no searching at all:
+the graph, the review with its alternatives and the arrows all come straight
+back. It also keeps what you got wrong, so the pale red arrows return with it.
+
+Each save records the time, the colour you had, the bot settings in force and how
+the game went. The result is not stored: won or lost is a fact about one line,
+and every line is in there.
+
+Rename a game by typing over its name, _Open_ replays it, _Delete_ removes it.
+A game opened from the library **keeps itself up to date** — play a new branch
+into it and the stored copy follows, without pressing save.
+
+The **star** keeps a game back from any purge: when the shelf fills, ordinary
+games are given up first however recent, and a favourite only goes when there is
+nothing else left. _Save on new_, beside the New game button, decides whether the
+game in progress is kept when you start another; on by default.
+
+_Clear stored analysis_ drops the engine's work from **every** saved game at
+once, keeping the games. That analysis is most of the bulk; the games themselves
+cost almost nothing.
+
+## PGN
+
+Export writes the whole tree, variations included, into the box; import reads one
+back, by paste or by file. An imported game can be played on from any position in
+it.
+
 ## Moving around the game
 
 `◀` `▶` step through the moves, `⏮` `⏭` jump to either end, and the arrow, Home
-and End keys do the same. Any move in the list can be clicked to jump to it.
+and End keys do the same. Any move in the list can be clicked to jump to it, and
+_Show more_ under the list drops the height limit so a branching tree can be read
+in one piece.
 
-Going back is not just for looking. Play a move from an earlier position and the
-game **forks** there: the continuation is discarded and you carry on down the new
-line. Use _Play from here_ to branch without moving first — handy for handing an
-earlier position back to the bot.
+The move list is a **tree**. Play a move from an earlier position and the game
+**forks** there: you carry on down the new line and the old one stays in the
+list, indented. Nothing is ever discarded. There is no "fork" button because
+there is nothing to press — playing the move _is_ the fork.
 
-During the reveal the same controls walk the engine's variation instead of the
-game, and _Back to game_ returns you to your move so you can try again.
+At a fork the arrows follow the **longest** line, which is the one that runs
+inline. Length rather than order of play, because a two-move experiment should
+not take over the arrow keys from the game you actually played; once a branch
+outgrows the original it becomes the main line by itself.
+
+_Another move_ asks the bot for a different move in the position you are standing
+on, excluding everything already played from there, so each press opens a new
+branch. Its deliberate errors turn **pink** in the list once you know about them.
+
+At the end of a line where the bot has not moved yet, **▶** makes it move. There
+is no recorded next move there, so that is the only thing forward can mean — and
+without it, stepping back into the bot's turn would be a dead end.
+
+Any control can be used while the bot is thinking: the search is abandoned rather
+than leaving you waiting on an answer nobody wants. Moving a piece while it
+thinks sets a **premove**, played the instant it becomes your turn.
 
 ## Running it
 
@@ -257,12 +312,23 @@ Unit tests feed fabricated search output to the pure logic. The engine test prov
 Stockfish actually emits what the parser expects, and that the thresholds behave on
 real positions.
 
-## Pieces
+## Board and pieces
 
-Eight piece sets ship with the app; pick one under _Bot settings_ and it is
-remembered on that device. They are **bundled, not fetched**: pieces that arrive
-over the network are pieces that do not arrive on a train, and playing offline is
-the point. All eight together cost about 266 KB next to the engine's 7.1 MB.
+Sixteen piece sets and six board colours, under _Board and pieces_. Both pickers
+show the thing itself rather than its name, and the board swatches are drawn with
+the pieces you have chosen, so the two can be judged together. Your choices are
+remembered on that device.
+
+Board colours are written rather than fetched — a board is two colours, so there
+is nothing to download and nobody to credit. `scripts/vendor-boards.mjs` takes a
+name and two hex values.
+
+The pieces are a different matter. They are **bundled, not fetched**: pieces that
+arrive over the network are pieces that do not arrive on a train, and playing
+offline is the point. All sixteen together cost under a megabyte next to the
+engine's 7.1 MB.
+
+point. All sixteen together cost under a megabyte next to the engine's 7.1 MB.
 
 All come from the
 [lichess piece sets](https://github.com/lichess-org/lila/tree/master/public/piece),

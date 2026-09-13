@@ -130,7 +130,6 @@ const buttons = {
   reveal: element('reveal'),
   punish: element('punish'),
   ignore: element('ignore'),
-  fork: element('fork'),
   another: element('another'),
   swap: element('swap'),
   review: element('review-run'),
@@ -619,7 +618,10 @@ async function main(): Promise<void> {
   function renderButtons(): void {
     buttons.first.toggleAttribute('disabled', tree.atStart);
     buttons.back.toggleAttribute('disabled', tree.atStart);
-    buttons.forward.toggleAttribute('disabled', tree.atLeaf);
+    // Forward still has something to do at the end of a line when the bot owes a
+    // move; without that, stepping back into the bot's turn is a dead end.
+    const botOwesAMove = tree.atLeaf && tree.turn !== you && !outcomeOf(tree.fen) && !thinking;
+    buttons.forward.toggleAttribute('disabled', tree.atLeaf && !botOwesAMove);
     buttons.last.toggleAttribute('disabled', tree.atLeaf);
 
     const stopped = mode.kind === 'rejected';
@@ -634,13 +636,6 @@ async function main(): Promise<void> {
     buttons.punish.hidden = !stopped;
     buttons.ignore.hidden = !stopped;
 
-    // Offered whenever the position in view needs someone to act on it: there is
-    // a continuation to leave behind, or it is the bot's move and the bot is not
-    // going to make it on its own because the search was interrupted. Without
-    // the second case, stepping back into the bot's turn is a dead end with no
-    // button, no true message and nothing to click.
-    const needsAction = !tree.atLeaf || tree.turn !== you;
-    buttons.fork.hidden = stopped || thinking || !needsAction || Boolean(outcomeOf(tree.fen));
     // Only meaningful standing on a move the bot made: that is the one to replace.
     const onBotMove = tree.current.move !== undefined && tree.current.move.by !== you;
     buttons.another.hidden = stopped || thinking || !onBotMove;
@@ -680,7 +675,7 @@ async function main(): Promise<void> {
     if (thinking) return 'Thinking…';
     // Never claim you can move in a position where it is not your turn: that is
     // the difference between browsing and being stuck.
-    if (tree.turn !== you) return 'Bot to move here — press “Play from here”.';
+    if (tree.turn !== you) return 'Bot to move here — press ▶ to let it play.';
     return tree.atLeaf ? 'Your move.' : 'Browsing. Play a move to branch from here.';
   }
 
@@ -700,6 +695,12 @@ async function main(): Promise<void> {
   }
 
   function step(delta: number): void {
+    // Forward at the end of a line where the bot has not moved yet: there is no
+    // recorded next move, so playing one is the only thing forward can mean.
+    if (delta > 0 && !thinking && tree.atLeaf && tree.turn !== you && !outcomeOf(tree.fen)) {
+      void botTurn();
+      return;
+    }
     interrupt();
     if (delta < 0) tree.back();
     else tree.forward();
@@ -1342,15 +1343,6 @@ async function main(): Promise<void> {
     await handOver();
   }
 
-  /** Abandon the continuation and carry on from the position in view. */
-  async function forkHere(): Promise<void> {
-    interrupt();
-    tree.promote();
-    mode = { kind: 'play' };
-    status('Playing on from here.');
-    await handOver();
-  }
-
   function wireControls(): void {
     buttons.first.onclick = () => {
       interrupt();
@@ -1374,9 +1366,6 @@ async function main(): Promise<void> {
     };
     buttons.ignore.onclick = () => {
       playAnyway(false);
-    };
-    buttons.fork.onclick = () => {
-      void forkHere();
     };
     buttons.another.onclick = () => {
       void anotherMove();
