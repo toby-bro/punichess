@@ -1,6 +1,6 @@
 # Everything — node, npm, the dependency tree — lives in here. Nothing is
 # installed on the host.
-FROM node:24-slim
+FROM node:26-slim
 
 WORKDIR /app
 
