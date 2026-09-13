@@ -323,6 +323,19 @@ async function main(): Promise<void> {
   const appearance = mountAppearance(element('appearance'), settings, changed => {
     settings = changed;
     saveSettings(settings);
+    /*
+     * Let go of a piece the browser took away.
+     *
+     * With `touch-action: pan-y` the browser may decide mid-touch that the finger
+     * is scrolling, and when it does it stops sending the board any more of that
+     * touch. Chessground listens for touchstart, touchmove and touchend and not
+     * for touchcancel, so it never hears that the drag it started is over, and the
+     * piece stays stuck to a finger that has gone.
+     */
+    element('board').addEventListener('touchcancel', () => {
+      board.cancelMove();
+    });
+
     applyAppearance();
   });
   const panel = mountSettings(element('settings'), settings, changed => {

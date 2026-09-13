@@ -230,12 +230,20 @@ main {
  * piece up" that is entirely wrong, and it is why a tap flashed blue and then
  * did nothing, and why holding a piece did nothing at all.
  *
- * `touch-action: none` says there is no gesture here for the browser to wait
- * for: the board wants the event immediately and will decide for itself. The
- * rest turns off the things a browser does to text, which none of this is.
+ * `touch-action: pan-y` answers the only part of that question worth waiting
+ * for -- a finger moving up or down the screen is scrolling the page, and the
+ * board wants nothing to do with it -- and settles everything else immediately,
+ * so a tap reaches the board at once instead of being held and possibly thrown
+ * away. The rest turns off the things a browser does to text, which none of
+ * this is.
+ *
+ * The cost is that dragging a piece up or down scrolls instead of dragging it.
+ * Tapping the piece and then the square it is going to always works, which is
+ * how most people play on a phone in any case, and a board you cannot scroll
+ * past is worse than a drag that has another way to be done.
  */
 .cg-wrap {
-  touch-action: none;
+  touch-action: pan-y;
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
