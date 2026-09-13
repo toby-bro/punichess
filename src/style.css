@@ -354,6 +354,67 @@ button:disabled {
   height: 28px;
 }
 
+/* ------------------------------------------------------------ saved games */
+
+#games-box {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  background: var(--raised);
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+#games-box summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+#games {
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.saved-game {
+  padding: 8px 0;
+  border-top: 1px solid var(--edge);
+}
+
+.saved-name {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-weight: 600;
+}
+
+.saved-name:hover,
+.saved-name:focus {
+  border-color: var(--edge);
+  background: var(--bg);
+  outline: none;
+}
+
+.saved-meta {
+  padding: 2px 6px 6px;
+  color: var(--dim);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.saved-controls {
+  display: flex;
+  gap: 6px;
+  padding-left: 4px;
+}
+
+.saved-controls button {
+  min-height: 36px;
+  padding: 6px 12px;
+}
+
 /* --------------------------------------------------------------------- pgn */
 
 #pgn-box {

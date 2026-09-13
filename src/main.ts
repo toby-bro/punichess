@@ -20,6 +20,8 @@ import {
   turnOf,
 } from './chess.ts';
 import { Engine, isCancelled } from './engine.ts';
+import { GameLibrary, type SavedEval, restoreTree, serialiseTree } from './library.ts';
+import { mountLibrary } from './library-view.ts';
 import { MistakeMemory } from './memory.ts';
 import { mountMoves } from './moves-view.ts';
 import { PgnImportError, fromPgn, pgnDate, toPgn } from './pgn.ts';
@@ -106,6 +108,7 @@ const buttons = {
   pgnImport: element('pgn-import'),
   pgnCopy: element('pgn-copy'),
   forget: element('forget'),
+  saveGame: element('save-game'),
 };
 
 const other = (colour: Color): Color => (colour === 'white' ? 'black' : 'white');
@@ -150,6 +153,7 @@ async function main(): Promise<void> {
   const stats = new Stats();
   /** Positions you have gone wrong in before, kept between sessions. */
   const memory = new MistakeMemory();
+  const library = new GameLibrary();
   let settings = loadSettings();
   let tree = new GameTree();
 
@@ -191,6 +195,14 @@ async function main(): Promise<void> {
    */
   let evaluateNew = false;
   /**
+   * Evaluations that came back with a loaded game, by node.
+   *
+   * Kept apart from the search cache rather than poured into it: a stored
+   * evaluation is a number without a line behind it, and the cache is what the
+   * arrows and the judging read from.
+   */
+  let savedEvals = new Map<number, SavedEval>();
+  /**
    * Bumped whenever the world changes under a move in progress.
    *
    * Aborting a search is not enough on its own: the bot also waits out its
@@ -229,6 +241,19 @@ async function main(): Promise<void> {
   });
 
   let moves = mountMoves(element('moves'), tree, { onSelect: goTo, revealed });
+  const games = mountLibrary(element('games'), library, {
+    onLoad: id => {
+      void openGame(id);
+    },
+    onRename: (id, name) => {
+      library.rename(id, name);
+      games.render();
+    },
+    onDelete: id => {
+      library.remove(id);
+      games.render();
+    },
+  });
   const panel = mountSettings(element('settings'), settings, changed => {
     // Raising the allowance mid-game should make more errors possible, not fewer.
     blundersLeft += changed.blundersPerGame - settings.blundersPerGame;
@@ -394,7 +419,7 @@ async function main(): Promise<void> {
    */
   function renderEval(fen: string): void {
     evaluateBox.hidden = !reviewing;
-    const best = reviewing ? cache.best(fen) : undefined;
+    const best = reviewing ? (evalOf(fen) ?? savedEvals.get(tree.current.id)) : undefined;
     evalBar.hidden = !best;
     if (!best) {
       if (reviewing && evaluateNew) evaluateSoon(fen);
@@ -598,6 +623,7 @@ async function main(): Promise<void> {
 
     tree = new GameTree();
     cache.clear();
+    savedEvals = new Map();
     stats.reset();
     revealed.clear();
     punishFrom = undefined;
@@ -931,6 +957,80 @@ async function main(): Promise<void> {
     }
   }
 
+  // ------------------------------------------------------------ saved games
+
+  /** Store the game as it stands, evaluations and all. */
+  function saveGame(): void {
+    if (tree.root.children.length === 0) {
+      status('Nothing to save yet.');
+      return;
+    }
+    const yours = stats.summary('you');
+    const theirs = stats.summary('bot');
+    const rootEval = evalOf(tree.root.fen);
+
+    const saved = library.save({
+      name: defaultName(),
+      playedAs: you,
+      settings,
+      metrics: {
+        moves: tree.nodes.length - 1,
+        youAcpl: yours.acpl,
+        botAcpl: theirs.acpl,
+        spotted,
+        missed,
+        made,
+      },
+      start: tree.root.fen,
+      ...(rootEval ? { rootEval } : {}),
+      nodes: serialiseTree(tree, node => evalOf(node.fen) ?? savedEvals.get(node.id)),
+    });
+    games.render();
+    status(`Saved as “${saved.name}”. Rename it under Saved games.`);
+  }
+
+  /** What a position is worth, from whatever the engine happens to have said. */
+  function evalOf(fen: string): SavedEval | undefined {
+    const best = cache.best(fen);
+    return best ? { cp: best.cp, mate: best.mate } : undefined;
+  }
+
+  function defaultName(): string {
+    const opening = tree.mainline
+      .slice(1, 5)
+      .flatMap(node => (node.move ? [node.move.san] : []))
+      .join(' ');
+    const date = new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    return opening.length > 0 ? `${opening} — ${date}` : `Game — ${date}`;
+  }
+
+  /** Reopen a saved game, with everything that was known about it. */
+  async function openGame(id: string): Promise<void> {
+    const game = library.find(id);
+    if (!game) return;
+    interrupt();
+
+    const restored = restoreTree(game);
+    tree = restored.tree;
+    savedEvals = restored.evals;
+    // The searches behind a stored game are gone; only its numbers came back.
+    cache.clear();
+    stats.reset();
+    revealed.clear();
+    punishFrom = undefined;
+    spotted = game.metrics.spotted;
+    missed = game.metrics.missed;
+    made = game.metrics.made;
+    you = game.playedAs;
+    mode = { kind: 'play' };
+    closeReview();
+    moves = mountMoves(element('moves'), tree, { onSelect: goTo, revealed });
+    board.set({ orientation: you });
+    updateScore();
+    status(`Opened “${game.name}”. Play on from anywhere.`);
+    await handOver();
+  }
+
   // -------------------------------------------------------------------- pgn
 
   function exportPgn(): void {
@@ -959,6 +1059,7 @@ async function main(): Promise<void> {
       // An imported game was not played here, so none of this session's
       // bookkeeping applies to it.
       cache.clear();
+      savedEvals = new Map();
       stats.reset();
       revealed.clear();
       punishFrom = undefined;
@@ -1076,6 +1177,7 @@ async function main(): Promise<void> {
     buttons.newGame.onclick = () => {
       void startGame();
     };
+    buttons.saveGame.onclick = saveGame;
     buttons.pgnExport.onclick = exportPgn;
     buttons.pgnImport.onclick = () => {
       importPgn(pgnText.value);
