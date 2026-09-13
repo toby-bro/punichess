@@ -334,11 +334,19 @@ button:disabled {
   margin-bottom: 10px;
 }
 
-/* Same size as every other button on the page: these sit in a row of their own
-   and looked like an afterthought at two thirds the height. */
+/* The game controls in this row match every other button on the page. */
 .moves-controls button {
   min-height: 44px;
   padding: 8px 12px;
+}
+
+/* Show more is not one of them: it acts on the list above it rather than on the
+   game, and reads quieter to say so. */
+#expand-moves {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 13px;
+  color: var(--dim);
 }
 
 .moves-empty {
