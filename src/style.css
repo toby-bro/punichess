@@ -504,18 +504,23 @@ button:disabled {
 }
 
 /* Four squares of a real board with a real piece standing on one, so the board
-   and the pieces can be judged together instead of one at a time. The tile is
-   two squares across, so at this size each square is half the swatch. */
+   and the pieces can be judged together instead of one at a time.
+
+   position: static matters. chessground gives cg-board position: absolute for
+   use inside its own container, and left as it is here it escapes the button,
+   which then collapses to nothing and shows no board at all. */
 .board-swatch cg-board {
-  display: block;
-  width: 96px;
-  height: 96px;
+  position: static;
+  display: grid;
+  place-items: center;
+  width: 128px;
+  height: 128px;
   background-size: 100% 100%;
 }
 
 .board-swatch piece {
-  width: 48px;
-  height: 48px;
+  width: 64px;
+  height: 64px;
 }
 
 /* A two-state slider. The label is the hit area, so the whole thing is tappable. */

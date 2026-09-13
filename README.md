@@ -264,25 +264,30 @@ remembered on that device. They are **bundled, not fetched**: pieces that arrive
 over the network are pieces that do not arrive on a train, and playing offline is
 the point. All eight together cost about 266 KB next to the engine's 7.1 MB.
 
-Every one is licensed compatibly with this project, and all come from the
-[lichess piece sets](https://github.com/lichess-org/lila/tree/master/public/piece):
+All come from the
+[lichess piece sets](https://github.com/lichess-org/lila/tree/master/public/piece),
+and each keeps its own licence:
 
-| set        | author                                                            | licence    |
-| ---------- | ----------------------------------------------------------------- | ---------- |
-| cburnett   | [Colin M.L. Burnett](https://en.wikipedia.org/wiki/User:Cburnett) | GPLv2+     |
-| merida     | Armando Hernandez Marroquin                                       | GPLv2+     |
-| chessnut   | [Alexis Luengas](https://github.com/LexLuengas/chessnut-pieces)   | Apache-2.0 |
-| fantasy    | [Maurizio Monge](https://github.com/maurimo/chess-art)            | MIT        |
-| celtic     | [Maurizio Monge](https://github.com/maurimo/chess-art)            | MIT        |
-| spatial    | [Maurizio Monge](https://github.com/maurimo/chess-art)            | MIT        |
-| mpchess    | [Maxime Chupin](https://github.com/chupinmaxime)                  | GPLv3+     |
-| kiwen-suwi | [neverRare](https://github.com/neverRare)                         | CC BY 4.0  |
+| set                                                          | author                                                            | licence         |
+| ------------------------------------------------------------ | ----------------------------------------------------------------- | --------------- |
+| merida                                                       | Armando Hernandez Marroquin                                       | GPLv2+          |
+| cburnett                                                     | [Colin M.L. Burnett](https://en.wikipedia.org/wiki/User:Cburnett) | GPLv2+          |
+| chessnut                                                     | [Alexis Luengas](https://github.com/LexLuengas/chessnut-pieces)   | Apache-2.0      |
+| fantasy, celtic, spatial                                     | [Maurizio Monge](https://github.com/maurimo/chess-art)            | MIT             |
+| mpchess                                                      | [Maxime Chupin](https://github.com/chupinmaxime)                  | GPLv3+          |
+| kiwen-suwi                                                   | [neverRare](https://github.com/neverRare)                         | CC BY 4.0       |
+| staunty, maestro, gioco, cardinal, fresca, dubrovny, tatiana | sadsnake1                                                         | CC BY-NC-SA 4.0 |
+| california                                                   | [Jerry S.](https://sites.google.com/view/jerrychess/home)         | CC BY-NC-SA 4.0 |
 
-Lichess's other sets — staunty, maestro, gioco, cardinal, fresca, dubrovny and
-most of the rest — are **CC BY-NC-SA**. The non-commercial clause makes them
-non-free and incompatible with the GPL, so however good they look they cannot
-ship here. `scripts/vendor-pieces.mjs` adds a set and regenerates the stylesheet;
-check the licence before using it.
+**The last two rows are non-commercial.** The code stays GPL-3.0 and the images
+keep their own licences — the program merely displays them, which is aggregation
+rather than derivation, and it is exactly how lichess itself ships them: lila is
+AGPL and its `COPYING.md` lists each asset separately.
+
+The practical consequence is that _this bundle as a whole_ cannot be used
+commercially. Fine for a game you host for yourself; if that ever changed,
+deleting those eight directories and rerunning `scripts/vendor-pieces.mjs` leaves
+everything else untouched.
 
 ## Licence
 

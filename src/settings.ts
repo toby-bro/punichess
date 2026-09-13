@@ -24,14 +24,25 @@ export type NumericSetting = Exclude<
  * licensed compatibly with this project -- see README.
  */
 export const PIECE_SETS = [
-  'cburnett',
+  // Licensed compatibly with this project's own GPL-3.0.
   'merida',
+  'cburnett',
   'chessnut',
   'fantasy',
   'celtic',
   'spatial',
   'mpchess',
   'kiwen-suwi',
+  // CC BY-NC-SA: free to use here, but they are what makes the bundle as a
+  // whole non-commercial. See README.
+  'staunty',
+  'maestro',
+  'gioco',
+  'cardinal',
+  'fresca',
+  'dubrovny',
+  'tatiana',
+  'california',
 ] as const;
 
 export type PieceSet = (typeof PIECE_SETS)[number];

@@ -217,7 +217,7 @@ describe('pieceSet', () => {
   it('refuses one that does not', () => {
     // The value becomes a class name. A set removed since it was chosen must not
     // leave the board with no pieces on it.
-    for (const junk of ['staunty', '', 42, null, undefined, {}]) {
+    for (const junk of ['horsey', '', 42, null, undefined, {}]) {
       assert.equal(parseSettings({ pieceSet: junk }).pieceSet, DEFAULT_SETTINGS.pieceSet);
     }
   });
