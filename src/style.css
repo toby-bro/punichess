@@ -35,9 +35,15 @@ body {
 main {
   /* The board is as wide as the screen allows, less a hair so it is not flush
      against the glass. Capped by height as well, or a wide desktop window would
-     hand back a board taller than the viewport. The reserve covers the two bands
-     above and below it. */
-  max-width: min(100vw, 100svh - 14rem);
+     hand back a board taller than the viewport.
+
+     The reserve is what guarantees nothing needs scrolling to reach. The bands
+     above and below are equal, so it has to be twice the taller of the two: the
+     top needs 121px (name, controls, bar) and the bottom 101px (status and the
+     buttons that answer it), so 2 x 121 plus slack. It was 14rem, which was
+     short, and the buttons under the status could land off the bottom of a short
+     window. */
+  max-width: min(100vw, 100svh - 16rem);
   margin: 0 auto;
   padding: 0 3px 12px;
 }
@@ -65,6 +71,11 @@ main {
   flex-direction: column;
   justify-content: center;
   gap: 8px;
+}
+
+/* The status line and the buttons that answer it are one thing, not two. */
+.under {
+  gap: 4px;
 }
 
 .board-row {
@@ -311,11 +322,19 @@ cg-board square.premove-dest:hover {
 }
 
 #status {
-  /* Fixed rather than minimum: messages differ in length, and a status line that
-     grows and shrinks moves the whole page under your thumb between moves. */
-  height: 3.4em;
+  /* Fixed rather than minimum: messages differ in length, and the buttons that
+     answer them sit directly underneath. A box that grew and shrank would move
+     those buttons between moves, which is how you tap the wrong one.
+
+     The text is centred inside the reserve rather than sitting at the top of
+     it. Short messages are the common case, and left at the top a one-line
+     "Your move." put the whole of the unused reserve between itself and the
+     buttons, which read as a gap somebody had forgotten to close. */
+  display: flex;
+  align-items: center;
+  height: 3.2em;
   overflow-y: auto;
-  margin: 10px 0 8px;
+  margin: 8px 0 0;
 }
 
 /* The alarm has to read as an interruption, not as commentary. */
@@ -683,16 +702,24 @@ button:disabled {
  * they buy back more width than anything else in these rows.
  */
 .switch-label {
-  /* Narrow enough that "Save on new" actually breaks -- at 7em it fit on one
-     line and bought nothing. */
-  max-width: 5.2em;
   line-height: 1.15;
 }
 
-/* This one is long enough that 5.2em would give it three lines, which is taller
-   than the switch beside it. Two is the point where the height stops being free. */
-#evaluate-box .switch-label {
-  max-width: 7.5em;
+/* Only where the width is actually short. A desktop row has room for the whole
+   phrase on one line, and breaking it there would be fixing nothing. */
+@media (max-width: 600px) {
+  /* Narrow enough that "Save on new" actually breaks -- at 7em it fit on one
+     line and bought nothing. */
+  .switch-label {
+    max-width: 5.2em;
+  }
+
+  /* This one is long enough that 5.2em would give it three lines, which is
+     taller than the switch beside it. Two lines is the point where the height
+     stops being free. */
+  #evaluate-box .switch-label {
+    max-width: 7.5em;
+  }
 }
 
 .switch[hidden] {
