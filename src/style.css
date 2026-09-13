@@ -173,6 +173,14 @@ button:disabled {
   font-weight: 600;
 }
 
+/* Raised like a footnote mark, and not scaled down further: a superscript on a
+   14px move list is already close to unreadable. */
+.moves .punished-mark {
+  font-size: 0.85em;
+  line-height: 0;
+  vertical-align: super;
+}
+
 /* A move you were warned about and played regardless: where to come back to. */
 .moves .move.played-anyway {
   color: var(--alarm);

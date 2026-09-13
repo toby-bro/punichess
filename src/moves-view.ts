@@ -99,10 +99,17 @@ function moveElement(
   const white = node.ply % 2 === 1;
   const prefix = white ? `${number}.` : needsNumber ? `${number}…` : '';
 
-  // A star marks the ones you went into with the bot set to punish, which is a
-  // different decision from shrugging and playing on.
-  const star = move?.punished === true ? '★' : '';
-  span.textContent = `${prefix}${prefix ? ' ' : ''}${move?.san ?? '?'}${star}`;
+  span.replaceChildren(document.createTextNode(`${prefix}${prefix ? ' ' : ''}${move?.san ?? '?'}`));
+  // A superscript asterisk marks the ones you went into with the bot set to
+  // punish, which is a different decision from shrugging and playing on. It sits
+  // above the line like a footnote rather than sitting in the move itself, which
+  // is what a glyph on the baseline would look like.
+  if (move?.punished === true) {
+    const mark = document.createElement('sup');
+    mark.className = 'punished-mark';
+    mark.textContent = '*';
+    span.append(mark);
+  }
   span.title =
     move?.punished === true
       ? 'You played this knowing it was wrong, and asked to be punished for it'
