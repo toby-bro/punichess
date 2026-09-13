@@ -30,6 +30,16 @@ body {
   /* Keep the board clear of the phone's rounded corners and notch. */
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
     env(safe-area-inset-left);
+
+  /*
+   * The height there is actually room in, once the notch and the gesture bar
+   * have taken theirs.
+   *
+   * Named because two separate rules need it and they have to agree. They did
+   * not: one subtracted the insets and the other did not, which is only visible
+   * where the insets are not zero.
+   */
+  --usable-height: calc(100svh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
 }
 
 main {
@@ -37,13 +47,21 @@ main {
      against the glass. Capped by height as well, or a wide desktop window would
      hand back a board taller than the viewport.
 
+     `100%` and not `100vw`. They are the same number in a browser tab and they
+     are not the same number in an installed app: the viewport unit is the whole
+     screen, insets included, while the space this element has been given is the
+     screen minus them. Asking for the first inside the second makes the page
+     wider than the window, which slides everything sideways and is exactly as
+     broken as it sounds. It cannot happen in a tab, because a tab in portrait
+     has no insets to disagree about.
+
      The reserve is what guarantees nothing needs scrolling to reach. The bands
      above and below are equal, so it has to be twice the taller of the two: the
      top needs 121px (name, controls, bar) and the bottom 101px (status and the
      buttons that answer it), so 2 x 121 plus slack. It was 14rem, which was
      short, and the buttons under the status could land off the bottom of a short
      window. */
-  max-width: min(100vw, 100svh - 16rem);
+  max-width: min(100%, var(--usable-height) - 16rem);
   margin: 0 auto;
   padding: 0 3px 12px;
 }
@@ -59,7 +77,7 @@ main {
  * the fold, where scrolling to it is a deliberate act.
  */
 .stage {
-  min-height: calc(100svh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  min-height: var(--usable-height);
   display: flex;
   flex-direction: column;
 }
