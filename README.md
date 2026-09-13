@@ -391,6 +391,16 @@ theme changes, where two files would have to be chosen once at load and then be
 wrong half the time. `favicon.png` keeps its background: a file that cannot adapt
 is safer with a ground of its own.
 
+No icon has a corner radius of its own. Every platform that shows an app icon
+rounds it itself, so a rounded rectangle drawn into the image is a second,
+smaller icon inside the first — and it shows. Android draws a _legacy_, which is
+to say non-maskable, icon on a white plate and shrinks it to fit, and a rounded
+icon inside that plate reads as a small dark square floating in white. That white
+plate is also the tell that an installed app has no maskable icon of the size
+being asked for: a WebAPK bakes its icons in at install time, so a manifest that
+gains one reaches an app already installed only when Chrome next re-checks it,
+or when it is installed again.
+
 #### Why the icon is declared the way it is
 
 Every size ships twice, as separate files: `purpose: any` and `purpose: maskable`.
