@@ -617,3 +617,63 @@ describe('a piece you just hung', () => {
     assert.notEqual(move.uci, undefined);
   });
 });
+
+describe('ignoring what you just threatened', () => {
+  /*
+   * You are White and have just played b2-b4, attacking the bishop on c5. It is
+   * the bot's move and it leaves the bishop there.
+   *
+   * The pawn on d6 defends c5, so bxc5 is a trade on paper: the older filter,
+   * which throws out an answer that takes something undefended, lets this
+   * straight through. It is still nothing but "take the bishop you attacked last
+   * move".
+   */
+  const attacked = 'rnbqk1nr/ppp2ppp/3p4/2b1p3/1P6/8/P1PPPPPP/RNBQKBNR b KQkq - 0 4';
+  const wide = search(['c5b6', 120], ['g8f6', -150], ['a7a6', -160]);
+
+  it('is not an error worth making', async () => {
+    const [best] = wide;
+    assert.ok(best);
+    const probe: Search = () => Promise.resolve(search(['b4c5', 320], ['g1f3', 10]));
+    const found = await pickBlunder(
+      policy({ probe, random: () => 0.5 }),
+      attacked,
+      best,
+      wide,
+      'b2b4',
+    );
+    assert.equal(found, undefined, 'the bishop it forgot to move is not a lesson');
+  });
+
+  it('is still an error when that piece does something other than take', async () => {
+    // The same pawn pushing on is a move in its own right, not the threat you
+    // made last turn being collected.
+    const [best] = wide;
+    assert.ok(best);
+    const probe: Search = () => Promise.resolve(search(['b4b5', 300], ['g1f3', 10]));
+    const found = await pickBlunder(
+      policy({ probe, random: () => 0.5 }),
+      attacked,
+      best,
+      wide,
+      'b2b4',
+    );
+    assert.ok(found);
+  });
+
+  it('is still an error when the capture is by a piece you moved earlier', async () => {
+    // A pawn that has been eyeing that bishop for six moves is part of the
+    // position. Forgetting about it is a real thing to be caught doing.
+    const [best] = wide;
+    assert.ok(best);
+    const probe: Search = () => Promise.resolve(search(['b4c5', 320], ['g1f3', 10]));
+    const found = await pickBlunder(
+      policy({ probe, random: () => 0.5 }),
+      attacked,
+      best,
+      wide,
+      'a2a3',
+    );
+    assert.ok(found);
+  });
+});

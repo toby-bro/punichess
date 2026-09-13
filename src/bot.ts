@@ -123,6 +123,9 @@ const lossOf = (best: PvLine, line: PvLine): number => Math.max(0, best.cp - lin
 /** The square a move ends on. */
 const destOf = (uci: string): string => uci.slice(2, 4);
 
+/** The square a move starts from. */
+const origOf = (uci: string): string => uci.slice(0, 2);
+
 /**
  * Lines whose move is still on the table.
  *
@@ -210,7 +213,13 @@ export async function chooseMove(
         return { uci: trap.uci, kind: 'mate-trap', deliberateError: true, cpLoss: trap.cpLoss };
       }
     }
-    const blunder = await pickBlunder(policy, fen, best, allowed(wide, fen, exclude, avoid));
+    const blunder = await pickBlunder(
+      policy,
+      fen,
+      best,
+      allowed(wide, fen, exclude, avoid),
+      context.lastMove,
+    );
     if (blunder) {
       return { uci: blunder.uci, kind: 'blunder', deliberateError: true, cpLoss: blunder.cpLoss };
     }
@@ -324,6 +333,7 @@ export async function pickBlunder(
   fen: string,
   best: PvLine,
   wide: readonly PvLine[],
+  lastMove?: string,
 ): Promise<Candidate | undefined> {
   const random = policy.random ?? Math.random;
   const { blunderMin, blunderMax } = policy.settings;
@@ -352,6 +362,16 @@ export async function pickBlunder(
     // spotting, it is one worth ignoring, so an answer that just takes the piece
     // that moved is not an answer worth setting up.
     if (destOf(punish.moves[0]) === destOf(uci)) continue;
+
+    // Nor is ignoring what you have just threatened. If the answer is that the
+    // piece you moved a moment ago eats something, then the error is only that
+    // the bot did not react to your last move, and you already know what your
+    // last move did -- you made it. You moved a pawn at a bishop; being told to
+    // take the bishop teaches nothing.
+    if (lastMove !== undefined && origOf(punish.moves[0]) === destOf(lastMove)) {
+      const answer = moveKind(after, punish.moves[0]);
+      if (answer.capture) continue;
+    }
 
     const kind = punishKind(after, punish);
     // Picking up something left hanging elsewhere is not a tactic either. The
