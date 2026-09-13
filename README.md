@@ -118,6 +118,13 @@ position while you were playing, and those searches are remembered, so the revie
 mostly asks for work already done. Only positions it has never seen cost
 anything.
 
+Reviewing is also an analysis board. Both colours are yours to move, nothing is
+judged or counted, and nothing answers you — you play both sides. Any move that
+is not already in the game becomes a branch. The three best moves and the
+evaluation are shown at every position, including ones you have just invented,
+which is what _Evaluate new positions_ does; it is on by default here and can be
+switched off, since each unknown position costs a search.
+
 ## Saved games
 
 _Save this game_ keeps the whole tree, every variation included, along with

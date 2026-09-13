@@ -478,7 +478,12 @@ async function main(): Promise<void> {
       turnColor: turnOf(fen),
       // Highlight whichever side just moved, not only yours.
       ...(last ? { lastMove: [square(last.uci, 0), square(last.uci, 2)] } : { lastMove: [] }),
-      movable: { color: you, dests: canMove() ? legalDests(fen) : noDests() },
+      movable: {
+        // Whoever is to move, while reviewing. Your own colour otherwise, so a
+        // piece of the bot's cannot be picked up in the middle of a game.
+        color: reviewing ? turnOf(fen) : you,
+        dests: canMove() ? legalDests(fen) : noDests(),
+      },
       // autoShapes, not shapes: the plain kind is the player's own drawing and
       // chessground wipes it the moment a piece is touched, which took the
       // remembered mistakes off the board as soon as you reached for a reply.
@@ -665,7 +670,9 @@ async function main(): Promise<void> {
    */
   function canMove(): boolean {
     if (thinking) return false;
-    return tree.turn === you && !outcomeOf(tree.fen);
+    if (outcomeOf(tree.fen)) return false;
+    // A review is an analysis board: both sides are yours to move.
+    return reviewing || tree.turn === you;
   }
 
   function liveStatus(): string {
@@ -771,6 +778,24 @@ async function main(): Promise<void> {
       // last rank as far as the board is concerned, so put it back.
       thinking = false;
       render();
+      return;
+    }
+
+    /*
+     * While reviewing, a move is a move on an analysis board.
+     *
+     * Both sides are yours, so there is nobody to judge and nobody to answer:
+     * it is played, the engine says what it thinks of the position it made, and
+     * that is all. Anything new becomes a branch, which is what a review is for.
+     */
+    if (reviewing) {
+      thinking = false;
+      tree.play(uci);
+      mode = { kind: 'play' };
+      syncSaved();
+      status(liveStatus());
+      render();
+      reviewView?.setSelected(tree.current.id);
       return;
     }
 
@@ -1218,6 +1243,13 @@ async function main(): Promise<void> {
         onSelect: goTo,
       });
       reviewing = true;
+      // On by default, because a review you can move both sides on is an
+      // analysis board, and an analysis board that says nothing about the
+      // position you have just made is not one. Still a toggle: the searching
+      // costs a moment each time, and somebody walking the game back may not
+      // want to pay it.
+      evaluateNew = true;
+      evaluateToggle.checked = true;
       reviewView.setSelected(tree.current.id);
     } catch (error) {
       if (isCancelled(error)) {
