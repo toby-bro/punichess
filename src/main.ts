@@ -1599,10 +1599,20 @@ async function main(): Promise<void> {
     };
 
     document.addEventListener('keydown', event => {
-      // Let the PGN box have its own keyboard.
-      if (event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLInputElement) {
-        return;
-      }
+      /*
+       * The arrows walk the game, wherever the focus happens to be.
+       *
+       * This used to stand aside for any input at all, which meant that once you
+       * had touched a toggle -- and a toggle is a checkbox, which keeps the focus
+       * after you click it -- the arrow keys stopped moving through the game and
+       * there was nothing on screen to say why. Stepping back and forward is the
+       * one thing that should always work.
+       *
+       * A textarea still keeps them, because there they move a cursor through
+       * text somebody is writing. Nothing else on this page does anything with
+       * an arrow key that is worth more than moving through the game.
+       */
+      if (event.target instanceof HTMLTextAreaElement) return;
       const actions: Record<string, () => void> = {
         ArrowLeft: () => {
           step(-1);
