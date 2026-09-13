@@ -46,6 +46,7 @@ import { mountLibrary } from './library-view.ts';
 import { MistakeMemory } from './memory.ts';
 import { mountMoves } from './moves-view.ts';
 import { PgnImportError, fromPgn, pgnDate, toPgn } from './pgn.ts';
+import { arrow, costLabel, readable, square } from './shapes.ts';
 import {
   type Verdict,
   isError,
@@ -144,45 +145,9 @@ const buttons = {
 };
 
 const other = (colour: Color): Color => (colour === 'white' ? 'black' : 'white');
-const square = (uci: string, end: 0 | 2): Key => uci.slice(end, end + 2) as Key;
-
-const arrow = (uci: string, brush: string, label?: string): DrawShape => ({
-  orig: square(uci, 0),
-  dest: square(uci, 2),
-  brush,
-  ...(label === undefined ? {} : { label: { text: label } }),
-});
-
 function status(text: string, alarm = false): void {
   statusEl.textContent = text;
   statusEl.classList.toggle('alarm', alarm);
-}
-
-/**
- * How much a move cost, short enough to sit on an arrow.
- *
- * Mate gets a # rather than a centipawn count, because a mate score is a hundred
- * pawns and "−99.9" says nothing anyone wants to read. Stalemate gets the draw
- * sign: it is neither a loss nor a missed mate, and calling it either was the
- * most confusing thing the app did.
- */
-function costLabel(cost: {
-  readonly stalemate?: boolean;
-  readonly missesMate?: boolean;
-  readonly hangsMate?: boolean;
-  readonly mateIn?: number | undefined;
-  readonly mateLater?: number | undefined;
-  readonly cpLoss: number;
-}): string {
-  if (cost.stalemate === true) return '½';
-  if (cost.missesMate === true) {
-    // A slower mate is still mate, so say how much slower rather than how much
-    // it "lost": the player did not lose anything, they took longer.
-    if (cost.mateLater !== undefined) return `#Δ${cost.mateLater}`;
-    return cost.mateIn === undefined ? '#' : `#${cost.mateIn}`;
-  }
-  if (cost.hangsMate === true) return '#';
-  return `−${(cost.cpLoss / 100).toFixed(1)}`;
 }
 
 /** Say what a move cost, in the terms that actually fit the position. */
@@ -463,7 +428,7 @@ async function main(): Promise<void> {
       // These also have to travel in the same call as the fen, since setting a
       // position clears what is drawn on it.
       drawable: {
-        autoShapes: onePerSquare([
+        autoShapes: readable([
           ...(mode.kind === 'rejected' ? rejectedShapes(mode.attempts) : []),
           ...rememberedShapes(fen, mode.kind === 'rejected' ? mode.attempts : []),
           // The explanation and the review both draw the engine's answers; the
@@ -539,24 +504,6 @@ async function main(): Promise<void> {
     evalText.textContent = formatEval(whiteCp, whiteMate);
     // The label sits on the dark part of the bar, wherever that currently is.
     evalText.classList.toggle('low', share > 60);
-  }
-
-  /**
-   * Keep the first shape drawn on each square.
-   *
-   * A move you have made before and just made again is both a mistake you are
-   * making and one you have made, so two arrows want the same square and their
-   * labels land on top of each other, reading as one doubled smear. The live one
-   * is drawn first and is the one that matters.
-   */
-  function onePerSquare(shapes: readonly DrawShape[]): DrawShape[] {
-    const taken = new Set<string>();
-    return shapes.filter(shape => {
-      const key = `${shape.orig}|${shape.dest ?? ''}`;
-      if (taken.has(key)) return false;
-      taken.add(key);
-      return true;
-    });
   }
 
   /**
