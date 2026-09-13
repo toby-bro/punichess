@@ -12,7 +12,8 @@ command -v rsvg-convert >/dev/null || { echo "needs rsvg-convert (librsvg)" >&2;
 
 render() { rsvg-convert -w "$2" -h "$2" "$1" -o "$3"; echo "  $3 ($2px)"; }
 
-cp icons/icon.svg public/favicon.svg
+# Its own drawing: no background, and it follows the browser's theme.
+cp icons/favicon.svg public/favicon.svg
 echo "  public/favicon.svg"
 render icons/icon.svg          48  public/favicon.png
 render icons/icon.svg         180  public/apple-touch-icon.png

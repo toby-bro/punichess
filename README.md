@@ -383,6 +383,14 @@ it. The script is not part of the build: it needs `rsvg-convert`, which nothing
 else here needs, and the icons change about once a year, so the PNGs are
 committed and neither the build nor a contributor has to have the tool.
 
+The favicon is a third drawing. It has no background and it follows the
+browser's theme: a dark knight with a light mane on a light tab strip, an ivory
+one on a dark strip. That is a `@media (prefers-color-scheme: dark)` block inside
+the SVG itself — one file rather than two, because a browser re-reads it when the
+theme changes, where two files would have to be chosen once at load and then be
+wrong half the time. `favicon.png` keeps its background: a file that cannot adapt
+is safer with a ground of its own.
+
 #### Why the icon is declared the way it is
 
 Every size ships twice, as separate files: `purpose: any` and `purpose: maskable`.
