@@ -9,6 +9,7 @@ import type { Key } from 'chessground/types';
 import type { Color } from 'chessops/types';
 
 import { type Policy, chooseMove } from './bot.ts';
+import { applyBrandFont, pickBrandFont } from './brand.ts';
 import {
   type Budget,
   LOOKUP,
@@ -143,6 +144,11 @@ const buttons = {
   expandMoves: element('expand-moves'),
   saveGame: element('save-game'),
 };
+
+// Before anything else draws: the title's face is decided per load, and asking
+// for it early is the difference between the name appearing in it and the name
+// appearing in the fallback and then jumping.
+applyBrandFont(pickBrandFont());
 
 const other = (colour: Color): Color => (colour === 'white' ? 'black' : 'white');
 function status(text: string, alarm = false): void {

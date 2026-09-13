@@ -327,12 +327,14 @@ The default set is **staunty**.
 
 ### The one thing that is not offline
 
-The title in the top-left is set in a webfont fetched from Google Fonts, chosen
-with `--brand-font` in `src/style.css` and linked from `index.html`. It is the
-only thing on the page that comes over the network, and it is a decoration: with
-no connection the link fails, the fallback stack takes over and nothing else
-notices. Google Fonts serves everything under the SIL Open Font License, which
-adds no obligation to the bundle.
+The title is set in one of 117 cartoon faces, picked at random on every load
+from the list in `src/brand.ts`. Only the one that is chosen is ever requested,
+so it costs a single stylesheet. Hover the title to find out which face you got.
+
+It is the only thing on the page that comes over the network, and it is a
+decoration: with no connection the request fails, the fallback stack takes over
+and nothing else notices. Every family is on Google Fonts under the SIL Open
+Font License, which adds no obligation to the bundle.
 
 The pieces are a different matter. They are **bundled, not fetched**: pieces that
 arrive over the network are pieces that do not arrive on a train, and playing
