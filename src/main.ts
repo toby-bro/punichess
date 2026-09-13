@@ -46,7 +46,7 @@ import { mountLibrary } from './library-view.ts';
 import { MistakeMemory } from './memory.ts';
 import { mountMoves } from './moves-view.ts';
 import { PgnImportError, fromPgn, pgnDate, toPgn } from './pgn.ts';
-import { arrow, costLabel, readable, square } from './shapes.ts';
+import { arrow, costLabel, readable, rememberedArrow, square } from './shapes.ts';
 import {
   type Verdict,
   isError,
@@ -532,12 +532,7 @@ async function main(): Promise<void> {
     return memory
       .at(fen)
       .filter(mistake => !showing.has(mistake.uci))
-      .map(mistake => {
-        // "x3" is the part worth seeing: falling for the same move repeatedly is
-        // a different problem from getting it wrong once.
-        const times = mistake.times > 1 ? ` ×${mistake.times}` : '';
-        return arrow(mistake.uci, 'paleRed', `${costLabel(mistake)}${times}`);
-      });
+      .map(mistake => rememberedArrow(mistake.uci, mistake));
   }
 
   /**

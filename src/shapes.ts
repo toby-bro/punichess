@@ -19,6 +19,19 @@ export interface Cost {
   readonly cpLoss: number;
 }
 
+/**
+ * The longest label that can still be read.
+ *
+ * Chessground draws every label in a circle of fixed size and picks the font as
+ * `0.4 * 0.75 ** text.length` -- so each extra character shrinks the type by a
+ * quarter, compounding. Four characters is comfortable, five is small, and
+ * seven ("−2.0 ×2") is a third the size of four inside the same circle: present,
+ * legible to nobody, and indistinguishable from a rendering fault.
+ *
+ * Anything a label wants to say beyond this has to be said some other way.
+ */
+export const LEGIBLE_LABEL = 5;
+
 export const square = (uci: string, end: 0 | 2): Key => uci.slice(end, end + 2) as Key;
 
 export const arrow = (uci: string, brush: string, label?: string): DrawShape => ({
@@ -27,6 +40,20 @@ export const arrow = (uci: string, brush: string, label?: string): DrawShape => 
   brush,
   ...(label === undefined ? {} : { label: { text: label } }),
 });
+
+/**
+ * A mistake you have made here before, drawn paler than one you are making now.
+ *
+ * Deliberately identical however many times you have fallen for it. Counting the
+ * repeats on the arrow made its text longer, and a longer label is a smaller
+ * label -- so the same mistake was legible or illegible depending on how often
+ * you had made it, and flipped between the two as you moved around the game.
+ * Drawing the repeat differently instead only moved the flicker somewhere else.
+ * An arrow that means one thing and always looks like it beats an arrow that
+ * carries a statistic nobody can read.
+ */
+export const rememberedArrow = (uci: string, cost: Cost): DrawShape =>
+  arrow(uci, 'paleRed', costLabel(cost));
 
 /**
  * How much a move cost, short enough to sit on an arrow.
@@ -45,7 +72,14 @@ export function costLabel(cost: Cost): string {
     return cost.mateIn === undefined ? '#' : `#${cost.mateIn}`;
   }
   if (cost.hangsMate === true) return '#';
-  return `−${(cost.cpLoss / 100).toFixed(1)}`;
+  // Past ten pawns the tenth of a pawn is noise, and the character it costs is
+  // not free: it shrinks the whole label. "-100.0" is unreadable; "-100" is not,
+  // and says everything "-100.0" did.
+  // Decided on the rendered text rather than the number, so a value that rounds
+  // up into two digits ("10.0") is caught along with one that started there.
+  const pawns = cost.cpLoss / 100;
+  const tenths = pawns.toFixed(1);
+  return `−${tenths.length > 3 ? Math.round(pawns).toFixed(0) : tenths}`;
 }
 
 /**

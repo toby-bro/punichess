@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import type { DrawShape } from 'chessground/draw';
 
-import { arrow, costLabel, readable, square } from './shapes.ts';
+import { LEGIBLE_LABEL, arrow, costLabel, readable, rememberedArrow, square } from './shapes.ts';
 
 const labels = (shapes: readonly DrawShape[]): (string | undefined)[] =>
   shapes.map(shape => shape.label?.text);
@@ -22,6 +22,9 @@ test('an arrow without a label carries no label field at all', () => {
 
 test('costLabel says mate rather than a hundred pawns', () => {
   assert.equal(costLabel({ cpLoss: 250 }), '−2.5');
+  assert.equal(costLabel({ cpLoss: 999 }), '−10', 'rounding up crosses into whole pawns');
+  assert.equal(costLabel({ cpLoss: 994 }), '−9.9');
+  assert.equal(costLabel({ cpLoss: 10_000 }), '−100');
   assert.equal(costLabel({ cpLoss: 9999, missesMate: true, mateIn: 3 }), '#3');
   assert.equal(costLabel({ cpLoss: 9999, missesMate: true, mateLater: 4 }), '#Δ4');
   assert.equal(costLabel({ cpLoss: 9999, hangsMate: true }), '#');
@@ -82,4 +85,37 @@ test('dropping a label does not mutate the shape it was given', () => {
   const original = arrow('c1f3', 'red', '−3.1');
   readable([arrow('g1f3', 'red', '−2.0'), original]);
   assert.deepEqual(original.label, { text: '−3.1' });
+});
+
+test('every label a mistake can produce stays legible', () => {
+  // Chessground picks the font as 0.4 * 0.75 ** length inside a fixed circle, so
+  // a long label is not merely cramped, it is smaller than the eye can resolve.
+  // This is the invariant the "x2" suffix broke: seven characters rendered at a
+  // third the size of four, which read as a rendering fault rather than as text.
+  const costs = [
+    { cpLoss: 0 },
+    { cpLoss: 50 },
+    { cpLoss: 9999 },
+    { cpLoss: 12_345 },
+    { cpLoss: 9999, missesMate: true, mateIn: 12 },
+    { cpLoss: 9999, missesMate: true, mateLater: 15 },
+    { cpLoss: 9999, hangsMate: true },
+    { cpLoss: 9999, stalemate: true },
+  ];
+  for (const cost of costs) {
+    const text = costLabel(cost);
+    assert.ok(
+      text.length <= LEGIBLE_LABEL,
+      `${text} is ${String(text.length)} characters, over ${String(LEGIBLE_LABEL)}`,
+    );
+  }
+});
+
+test('a remembered mistake looks the same however often it was made', () => {
+  // The whole point: nothing about how many times you fell for it may reach the
+  // arrow, in the text or anywhere else. It changed size as you moved around the
+  // game, which reads as the board glitching rather than as information.
+  const once = rememberedArrow('g1f3', { cpLoss: 200 });
+  assert.deepEqual(once.label, { text: '−2.0' });
+  assert.equal(once.modifiers, undefined);
 });
