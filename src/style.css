@@ -41,10 +41,15 @@ main {
   gap: 8px;
 }
 
-#board {
+.board-holder {
+  position: relative;
   flex: 1 1 auto;
-  aspect-ratio: 1;
   min-width: 0;
+}
+
+#board {
+  width: 100%;
+  aspect-ratio: 1;
 }
 
 /* Only ever shown with the review open. During a game it would announce the
@@ -248,29 +253,72 @@ button:disabled {
   color: var(--fg);
 }
 
-/* Sits above the board rather than over it: a dialog covering the position is
-   the one thing you need to see while choosing. */
+/* The pieces themselves, stacked on the file the pawn is promoting on. Naming
+   four pieces in words asks you to translate; showing them does not. */
 .promotion {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
-  padding: 6px 8px;
-  border: 1px solid var(--edge);
-  border-radius: 6px;
-  background: var(--raised);
-  font-size: 14px;
-  overflow-x: auto;
+  position: absolute;
+  inset: 0;
+  z-index: 5;
 }
 
 .promotion[hidden] {
   display: none;
 }
 
-.promotion button {
-  flex: 0 0 auto;
-  min-height: 40px;
-  padding: 6px 10px;
+.promotion-veil {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 0.45);
+}
+
+.promotion-choices {
+  position: absolute;
+  /* One board square wide, set from the file the pawn reached. */
+  width: 12.5%;
+  left: calc(var(--promotion-file, 0) * 12.5%);
+}
+
+.promotion-choices.from-top {
+  top: 0;
+}
+
+.promotion-choices.from-bottom {
+  bottom: 0;
+  /* Running back towards the edge the pawn came from, as the board reads. */
+  flex-direction: column-reverse;
+  display: flex;
+}
+
+.promotion-choice {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: #f0f0e8;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.25);
+  cursor: pointer;
+}
+
+.promotion-choice:hover,
+.promotion-choice:focus-visible {
+  background: #b4d08a;
+  outline: none;
+}
+
+/* Undo the board's absolute placement: in here a piece is just an icon. */
+.promotion piece {
+  position: static;
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  pointer-events: none;
 }
 
 /* A two-state slider. The label is the hit area, so the whole thing is tappable. */

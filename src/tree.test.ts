@@ -318,3 +318,70 @@ describe('longest-branch navigation at scale', () => {
     assert.equal(tree.mainline.length, 201, 'root plus every ply');
   });
 });
+
+describe('punishing is a property of the branch', () => {
+  const punishedAt = (ply: number): GameTree => {
+    const tree = opening();
+    tree.first();
+    for (let i = 0; i < ply; i++) tree.forward();
+    tree.startPunishing();
+    return tree;
+  };
+
+  it('is off to begin with', () => {
+    assert.equal(opening().punishing, false);
+  });
+
+  it('holds from the move it was switched on at, downwards', () => {
+    const tree = punishedAt(1);
+    assert.equal(tree.punishing, true);
+    tree.forward();
+    assert.equal(tree.punishing, true, 'and keeps holding further down');
+  });
+
+  it('does not reach above where it started', () => {
+    const tree = punishedAt(2);
+    assert.equal(tree.punishing, true);
+    tree.back();
+    assert.equal(tree.punishing, false, 'stepping out of the branch leaves it behind');
+  });
+
+  it('comes back when you return to the branch', () => {
+    const tree = punishedAt(2);
+    tree.first();
+    assert.equal(tree.punishing, false);
+    tree.last();
+    assert.equal(tree.punishing, true, 'the branch still remembers');
+  });
+
+  it('does not reach into a sibling branch', () => {
+    const tree = opening();
+    tree.first();
+    tree.forward();
+    tree.forward();
+    tree.startPunishing(); // punishing after 1. e4 e5
+    tree.first();
+    tree.forward();
+    tree.play('c7c5');
+    assert.equal(tree.punishing, false, 'a different reply is a different branch');
+  });
+
+  it('switches off everywhere above, not only here', () => {
+    const tree = punishedAt(1);
+    tree.last();
+    tree.startPunishing();
+    tree.stopPunishing();
+    assert.equal(tree.punishing, false);
+    tree.first();
+    tree.last();
+    assert.equal(tree.punishing, false, 'including the one further up that started it');
+  });
+
+  it('does nothing at the root, which is nobody’s move', () => {
+    const tree = new GameTree();
+    assert.doesNotThrow(() => {
+      tree.startPunishing();
+    });
+    assert.equal(tree.punishing, false);
+  });
+});

@@ -94,6 +94,8 @@ const keepToggle = element('keep') as HTMLInputElement;
 const evaluateBox = element('evaluate-box');
 const evaluateToggle = element('evaluate') as HTMLInputElement;
 const promotionBox = element('promotion');
+const promotionChoices = element('promotion-choices');
+const promotionVeil = element('promotion-veil');
 const evalBar = element('eval-bar');
 const evalFill = element('eval-fill');
 const evalText = element('eval-text');
@@ -184,6 +186,22 @@ function describeCost(verdict: Verdict): string {
   );
 }
 
+/** The piece a promotion button stands for, as chessground names roles. */
+function roleOf(button: Element): string {
+  return button.getAttribute('data-role') === 'r'
+    ? 'rook'
+    : button.getAttribute('data-role') === 'b'
+      ? 'bishop'
+      : button.getAttribute('data-role') === 'n'
+        ? 'knight'
+        : 'queen';
+}
+
+/** The same choice as UCI writes it. */
+function roleLetter(button: Element): string {
+  return button.getAttribute('data-role') ?? 'q';
+}
+
 async function main(): Promise<void> {
   const engine = new Engine(`${import.meta.env.BASE_URL}engine/stockfish-18-lite-single.js`);
   const cache = new PositionCache();
@@ -206,11 +224,6 @@ async function main(): Promise<void> {
   let made = 0;
   /** Bot errors you have been shown, so the move list can mark them. */
   const revealed = new Set<number>();
-  /**
-   * While set, the bot plays only best moves, but only below this node: step
-   * back above where you asked to be punished and it goes back to normal.
-   */
-  let punishFrom: number | undefined;
   /**
    * The review, once it has been run. Declared here rather than beside the
    * review code because the game starts before that point is reached, and the
@@ -412,14 +425,14 @@ async function main(): Promise<void> {
       // These also have to travel in the same call as the fen, since setting a
       // position clears what is drawn on it.
       drawable: {
-        autoShapes: [
+        autoShapes: onePerSquare([
           ...(mode.kind === 'rejected' ? rejectedShapes(mode.attempts) : []),
           ...rememberedShapes(fen, mode.kind === 'rejected' ? mode.attempts : []),
           // The explanation and the review both draw the engine's answers; the
           // difference is that one of them you asked for a moment ago.
           ...(reviewing || (mode.kind === 'rejected' && mode.shown) ? bestArrows(fen) : []),
           ...(mode.kind === 'rejected' && mode.shown ? cageShapes(mode.attempts) : []),
-        ],
+        ]),
       },
     });
     renderEval(fen);
@@ -488,6 +501,24 @@ async function main(): Promise<void> {
     evalText.textContent = formatEval(whiteCp, whiteMate);
     // The label sits on the dark part of the bar, wherever that currently is.
     evalText.classList.toggle('low', share > 60);
+  }
+
+  /**
+   * Keep the first shape drawn on each square.
+   *
+   * A move you have made before and just made again is both a mistake you are
+   * making and one you have made, so two arrows want the same square and their
+   * labels land on top of each other, reading as one doubled smear. The live one
+   * is drawn first and is the one that matters.
+   */
+  function onePerSquare(shapes: readonly DrawShape[]): DrawShape[] {
+    const taken = new Set<string>();
+    return shapes.filter(shape => {
+      const key = `${shape.orig}|${shape.dest ?? ''}`;
+      if (taken.has(key)) return false;
+      taken.add(key);
+      return true;
+    });
   }
 
   /**
@@ -618,10 +649,6 @@ async function main(): Promise<void> {
   function goTo(id: number): void {
     interrupt();
     tree.goTo(id);
-    // Asking to be punished applies to a branch, so leaving that branch ends it.
-    if (punishFrom !== undefined && !tree.isWithin(tree.current.id, punishFrom)) {
-      punishFrom = undefined;
-    }
     mode = { kind: 'play' };
     afterNavigation();
   }
@@ -656,7 +683,6 @@ async function main(): Promise<void> {
     // them onto a board you have only just set up says nothing about this game.
     memory.clear();
     revealed.clear();
-    punishFrom = undefined;
     blundersLeft = settings.blundersPerGame;
     spotted = 0;
     missed = 0;
@@ -697,6 +723,13 @@ async function main(): Promise<void> {
     thinking = true;
     lockBoard();
     const uci = await withPromotion(orig, dest);
+    if (uci === undefined) {
+      // Changed your mind at the promotion picker. The pawn is already on the
+      // last rank as far as the board is concerned, so put it back.
+      thinking = false;
+      render();
+      return;
+    }
 
     try {
       const lines = await analyse(fen, SEARCH);
@@ -838,9 +871,9 @@ async function main(): Promise<void> {
     const attempts = mode.kind === 'rejected' ? mode.attempts : [];
     const chosen = attempts.at(-1);
     if (!chosen) return;
-    const node = tree.play(chosen.uci);
+    tree.play(chosen.uci);
     tree.markPlayedAnyway(punish);
-    punishFrom = punish ? node.id : undefined;
+    if (!punish) tree.stopPunishing();
     mode = { kind: 'play' };
     syncSaved();
     status(punish ? 'Right — watch how that gets punished.' : 'Playing it anyway.');
@@ -933,7 +966,7 @@ async function main(): Promise<void> {
 
   /** Whether the bot is currently answering with best moves only. */
   function punishing(): boolean {
-    return punishFrom !== undefined && tree.isWithin(tree.current.id, punishFrom);
+    return tree.punishing;
   }
 
   function wantsError(): boolean {
@@ -953,26 +986,48 @@ async function main(): Promise<void> {
    * Chessground has already moved the pawn by the time this runs, so the board
    * shows the square in question while you choose.
    */
-  async function withPromotion(orig: Key, dest: Key): Promise<string> {
+  async function withPromotion(orig: Key, dest: Key): Promise<string | undefined> {
     const piece = board.state.pieces.get(dest);
     const lastRank = dest.endsWith('8') || dest.endsWith('1');
     if (piece?.role !== 'pawn' || !lastRank) return orig + dest;
-    return orig + dest + (await askPromotion());
+    const role = await askPromotion(dest);
+    return role === undefined ? undefined : orig + dest + role;
   }
 
-  /** Show the picker and wait. Resolves with the chosen piece letter. */
-  function askPromotion(): Promise<string> {
+  /**
+   * Show the pieces on the file the pawn reached and wait.
+   *
+   * Resolves with the piece letter, or undefined if you changed your mind --
+   * the pawn is already sitting on the last rank by now, so backing out has to
+   * be possible.
+   */
+  function askPromotion(dest: Key): Promise<string | undefined> {
+    // Files run left to right from White's side and the other way from Black's.
+    const file = dest.charCodeAt(0) - 'a'.charCodeAt(0);
+    const column = you === 'white' ? file : 7 - file;
+    // The choices hang from whichever edge the pawn just reached.
+    const atTop = you === 'white' ? dest.endsWith('8') : dest.endsWith('1');
+
+    promotionChoices.style.setProperty('--promotion-file', String(column));
+    promotionChoices.classList.toggle('from-top', atTop);
+    promotionChoices.classList.toggle('from-bottom', !atTop);
+
+    const buttons = [...promotionChoices.querySelectorAll('button')];
+    for (const button of buttons) {
+      // The promoting side's pieces, not always White's.
+      button.querySelector('piece')?.setAttribute('class', `${roleOf(button)} ${you}`);
+    }
+    promotionBox.hidden = false;
+
     return new Promise(resolve => {
-      promotionBox.hidden = false;
-      const buttons = [...promotionBox.querySelectorAll('button')];
-      const choose = (role: string) => () => {
+      const finish = (role: string | undefined) => () => {
         promotionBox.hidden = true;
         for (const button of buttons) button.onclick = null;
+        promotionVeil.onclick = null;
         resolve(role);
       };
-      for (const button of buttons) {
-        button.onclick = choose(button.dataset['role'] ?? 'q');
-      }
+      for (const button of buttons) button.onclick = finish(roleLetter(button));
+      promotionVeil.onclick = finish(undefined);
     });
   }
 
@@ -1123,7 +1178,6 @@ async function main(): Promise<void> {
     stats.reset();
     memory.restore(game.mistakes);
     revealed.clear();
-    punishFrom = undefined;
     spotted = game.metrics.spotted;
     missed = game.metrics.missed;
     made = game.metrics.made;
@@ -1170,7 +1224,6 @@ async function main(): Promise<void> {
       stats.reset();
       memory.clear();
       revealed.clear();
-      punishFrom = undefined;
       spotted = 0;
       missed = 0;
       made = 0;
@@ -1253,7 +1306,9 @@ async function main(): Promise<void> {
     punishToggle.onchange = () => {
       // Switching it on means "from here", the same as asking to be punished;
       // switching it off means now, wherever you are.
-      punishFrom = punishToggle.checked ? tree.current.id : undefined;
+      if (punishToggle.checked) tree.startPunishing();
+      else tree.stopPunishing();
+      syncSaved();
       status(
         punishToggle.checked ? 'Punishing: best moves only from here.' : 'Back to normal play.',
       );

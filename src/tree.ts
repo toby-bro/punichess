@@ -230,6 +230,34 @@ export class GameTree {
     if (punished) this.#current.move.punished = true;
   }
 
+  /**
+   * Whether the position being looked at sits inside a branch where punishment
+   * was asked for.
+   *
+   * Read off the tree rather than held as loose state, so it survives navigating
+   * away and back, and is saved with the game. Going back above the move where
+   * it started leaves it behind, which is the only sensible meaning for "punish
+   * me from here".
+   */
+  get punishing(): boolean {
+    for (let node: TreeNode | undefined = this.#current; node; node = node.parent) {
+      if (node.move?.punished === true) return true;
+    }
+    return false;
+  }
+
+  /** Start punishing from the move being looked at. */
+  startPunishing(): void {
+    if (this.#current.move) this.#current.move.punished = true;
+  }
+
+  /** Stop punishing, here and anywhere above that switched it on. */
+  stopPunishing(): void {
+    for (let node: TreeNode | undefined = this.#current; node; node = node.parent) {
+      if (node.move) node.move.punished = false;
+    }
+  }
+
   /** Move the viewpoint. Unknown ids are ignored rather than throwing. */
   goTo(id: number): void {
     const node = this.#byId.get(id);

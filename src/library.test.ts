@@ -487,3 +487,28 @@ describe('clearing the stored analysis', () => {
     });
   });
 });
+
+describe('punishing survives a save', () => {
+  it('comes back on the branch it was switched on at', () => {
+    const tree = branched();
+    tree.first();
+    tree.forward();
+    tree.forward();
+    tree.startPunishing();
+
+    const restored = restoreTree({ ...gameFrom(tree), id: 'x', saved: 0 });
+    restored.tree.first();
+    restored.tree.last();
+    assert.equal(restored.tree.punishing, true);
+
+    restored.tree.first();
+    restored.tree.forward();
+    assert.equal(restored.tree.punishing, false, 'and only on that branch');
+  });
+
+  it('is absent when it was never switched on', () => {
+    const restored = restoreTree({ ...gameFrom(branched()), id: 'x', saved: 0 });
+    restored.tree.last();
+    assert.equal(restored.tree.punishing, false);
+  });
+});

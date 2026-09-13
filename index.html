@@ -9,16 +9,29 @@
   </head>
   <body>
     <main>
-      <div id="promotion" class="promotion" hidden>
-        <span>Promote to</span>
-        <button type="button" data-role="q">Queen</button>
-        <button type="button" data-role="r">Rook</button>
-        <button type="button" data-role="b">Bishop</button>
-        <button type="button" data-role="n">Knight</button>
-      </div>
-
       <div class="board-row">
-        <div id="board"></div>
+        <div class="board-holder">
+          <div id="board"></div>
+          <!-- Over the pawn, as pieces. Inside a cg-wrap so the board's own
+               piece images apply to it. -->
+          <div id="promotion" class="cg-wrap promotion" hidden>
+            <div id="promotion-veil" class="promotion-veil"></div>
+            <div id="promotion-choices" class="promotion-choices">
+              <button type="button" class="promotion-choice" data-role="q" aria-label="Queen">
+                <piece class="queen"></piece>
+              </button>
+              <button type="button" class="promotion-choice" data-role="r" aria-label="Rook">
+                <piece class="rook"></piece>
+              </button>
+              <button type="button" class="promotion-choice" data-role="b" aria-label="Bishop">
+                <piece class="bishop"></piece>
+              </button>
+              <button type="button" class="promotion-choice" data-role="n" aria-label="Knight">
+                <piece class="knight"></piece>
+              </button>
+            </div>
+          </div>
+        </div>
         <div id="eval-bar" hidden>
           <div id="eval-fill"></div>
           <span id="eval-text"></span>

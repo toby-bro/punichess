@@ -39,6 +39,8 @@ export interface SavedNode {
   readonly uci: string;
   readonly deliberateError?: boolean;
   readonly playedAnyway?: boolean;
+  /** Punishment was switched on here. */
+  readonly punished?: boolean;
   /** The evaluation of the position this move reaches. */
   readonly eval?: SavedEval | undefined;
 }
@@ -102,6 +104,7 @@ export function serialiseTree(
           uci: node.move.uci,
           ...(node.move.deliberateError ? { deliberateError: true } : {}),
           ...(node.move.playedAnyway ? { playedAnyway: true } : {}),
+          ...(node.move.punished ? { punished: true } : {}),
           ...(evalOf(node) ? { eval: evalOf(node) } : {}),
         };
         return saved;
@@ -136,6 +139,7 @@ export function restoreTree(game: SavedGame): RestoredGame {
         deliberateError: saved.deliberateError === true,
         playedAnyway: saved.playedAnyway === true,
       });
+      if (saved.punished === true && node.move) node.move.punished = true;
       idMap.set(saved.id, node.id);
       if (saved.eval) evals.set(node.id, saved.eval);
     } catch {
@@ -171,6 +175,7 @@ function parseNode(raw: unknown): SavedNode | undefined {
     uci,
     ...(value['deliberateError'] === true ? { deliberateError: true } : {}),
     ...(value['playedAnyway'] === true ? { playedAnyway: true } : {}),
+    ...(value['punished'] === true ? { punished: true } : {}),
     ...(parseEval(value['eval']) ? { eval: parseEval(value['eval']) } : {}),
   };
 }
