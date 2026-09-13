@@ -86,10 +86,13 @@ Your average loss and the bot's are shown as you play.
 _Review game_ analyses every position and shows:
 
 - an **evaluation graph** across the whole game, with every inaccuracy, mistake
-  and blunder marked. Click anywhere on it to put that position on the board, and
+  and blunder marked. Drag along it to scrub through the game, and
   moving the board draws a marker back at the matching point
 - an **evaluation bar** beside the board, and the engine's **three best moves**
   drawn as arrows with their evaluations
+- a summary with **two columns per player**: the game as it finally stands, and
+  everything you actually tried. The gap between them is the part a game you were
+  stopped during does not otherwise show.
 - **every move** labelled and costed, next to the **three best moves** that were
   available in that position
 
