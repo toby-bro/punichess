@@ -46,7 +46,10 @@ describe('toPgn', () => {
     tree.play('e2e4');
     const pgn = toPgn(tree);
     assert.match(pgn, /\[SetUp "1"\]/);
-    assert.match(pgn, new RegExp(`\\[FEN "${fen.replace(/\//g, '\\/')}"\\]`));
+    // Checked as plain text rather than built into a pattern: a FEN is data, and
+    // turning data into a regular expression means escaping it correctly, which
+    // is a thing to get wrong rather than a thing to do.
+    assert.ok(pgn.includes(`[FEN "${fen}"]`), `expected the FEN in:\n${pgn}`);
   });
 
   it('writes an empty game without falling over', () => {

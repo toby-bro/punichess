@@ -2,6 +2,11 @@
   "name": "punichess",
   "version": "0.1.0",
   "description": "Play a bot that errs on purpose, and get stopped the moment you miss it.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/toby-bro/punichess.git"
+  },
+  "homepage": "https://punichess.toby.re",
   "scripts": {
     "vendor": "node scripts/vendor-engine.mjs",
     "dev": "npm run vendor && vite",
