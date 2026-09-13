@@ -222,6 +222,13 @@
       </details>
 
       <section id="review" hidden aria-label="Game review"></section>
+
+      <!-- Fixed rather than in the flow: an update notice that pushed the board
+           would be a worse interruption than the one it is announcing, and one
+           further down the page would never be seen. -->
+      <button id="update" class="update-toast" type="button" hidden>
+        New version — tap to reload
+      </button>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>

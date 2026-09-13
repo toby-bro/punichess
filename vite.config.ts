@@ -16,6 +16,9 @@ export default defineConfig({
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',
+      // Registered by hand in src/updates.ts: the injected one registers on load
+      // and never checks again, which on an installed app means never.
+      injectRegister: false,
       includeAssets: ['engine/*'],
       workbox: {
         // The engine is ~7.3MB and must be precached or the app is not offline.

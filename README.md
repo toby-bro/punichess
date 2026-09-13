@@ -219,6 +219,22 @@ Build, publish `dist/` as a static site, open it in Chrome, and use _Add to home
 screen_. It then works fully offline: the service worker precaches the engine
 (~7.3 MB) along with everything else.
 
+#### Getting updates
+
+An installed app is never really closed, so "it will pick it up next time" never
+arrives and the only way to see a new version was to clear the site's storage.
+`src/updates.ts` replaces the registration vite-plugin-pwa injects, which
+registers the worker on load and never checks again. It now asks on a timer,
+whenever the app returns to the foreground, and whenever the network comes back;
+it forbids the worker script itself from being answered out of the HTTP cache,
+which GitHub Pages serves with ten minutes of freshness; and when a new version
+takes over it reloads the page, which the old registration never did either.
+
+If nothing has been played yet the reload is immediate and you see nothing. In
+the middle of a game it waits to be asked, because pulling the page out from
+under a position you are thinking about is a worse interruption than the one it
+is announcing.
+
 ### Changing dependencies
 
 `node_modules` deliberately lives only inside the container. After editing

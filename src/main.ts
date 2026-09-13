@@ -47,6 +47,7 @@ import { mountLibrary } from './library-view.ts';
 import { MistakeMemory } from './memory.ts';
 import { mountMoves } from './moves-view.ts';
 import { PgnImportError, fromPgn, pgnDate, toPgn } from './pgn.ts';
+import { watchForUpdates } from './updates.ts';
 import { arrow, costLabel, readable, rememberedArrow, square } from './shapes.ts';
 import {
   type Verdict,
@@ -143,6 +144,7 @@ const buttons = {
   forget: element('forget'),
   expandMoves: element('expand-moves'),
   saveGame: element('save-game'),
+  update: element('update'),
 };
 
 // Before anything else draws: the title's face is decided per load, and asking
@@ -321,6 +323,25 @@ async function main(): Promise<void> {
   });
 
   applyAppearance();
+
+  /*
+   * A new version has taken over. Reload, unless that would cost something.
+   *
+   * Nothing has been played yet: reload straight away and the update is
+   * invisible, which is what an update should be. Mid-game: say so and wait to
+   * be asked. Pulling the page out from under a position you are thinking about
+   * is a worse interruption than the one it is announcing, and this app already
+   * interrupts you quite enough.
+   */
+  watchForUpdates({
+    onTakenOver: () => {
+      if (tree.atStart && tree.root.children.length === 0) {
+        globalThis.location.reload();
+        return;
+      }
+      buttons.update.hidden = false;
+    },
+  });
 
   status('Loading engine…');
   await engine.init();
@@ -1364,6 +1385,11 @@ async function main(): Promise<void> {
       void startGame();
     };
     buttons.saveGame.onclick = saveGame;
+    // Whatever is in progress is already in storage -- it is saved on every
+    // move -- so this loses a position on the board and nothing else.
+    buttons.update.onclick = () => {
+      globalThis.location.reload();
+    };
     buttons.clearAnalysis.onclick = () => {
       library.clearAnalysis();
       games.render();

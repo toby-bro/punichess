@@ -1135,3 +1135,31 @@ button:disabled {
   color: var(--fg);
   font-weight: 600;
 }
+
+/* ----------------------------------------------------------------- updates */
+
+/*
+ * The new-version notice.
+ *
+ * Only ever shown when a new version has taken over mid-game, which is the one
+ * case where reloading without asking would cost you something. Reloading at any
+ * other time happens silently and this is never seen.
+ */
+.update-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 30;
+  min-height: 36px;
+  padding: 8px 14px;
+  font-size: 14px;
+  border-color: #6f8f5f;
+  background: #23291f;
+  color: var(--fg);
+  box-shadow: 0 2px 12px rgb(0 0 0 / 0.5);
+}
+
+.update-toast[hidden] {
+  display: none;
+}
