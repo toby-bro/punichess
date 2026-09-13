@@ -240,9 +240,17 @@ export function needsVerification(verdict: Verdict, thresholds: Thresholds): boo
 /** Whether a verdict is bad enough to interrupt the game for. */
 export function isError(verdict: Verdict, thresholds: Thresholds): boolean {
   // Mate, in either direction, is always worth stopping for: seeing mates is the
-  // entire reason this app exists. Checked before any suppression rule.
+  // entire reason this app exists. Checked before anything else.
   if (verdict.missesMate || verdict.hangsMate) return true;
+
+  // Punish mode: the position is lost by construction, so winning chances say
+  // nothing and material is all that is left to judge by.
   if (thresholds.evenWhenDecided === true) return verdict.cpLoss >= thresholds.cp;
-  if (Math.abs(verdict.best.cp) > DECIDED_CP) return false;
+
+  // Winning chances do the whole job of not nagging in a decided game. At +9.00
+  // a dropped pawn costs 1.5% and stays quiet; hanging the queen costs 42% and
+  // does not. An outright test on the evaluation used to sit in front of this
+  // and answered "already decided, say nothing" to both -- which is exactly the
+  // blunder anyone would most want to hear about.
   return verdict.cpLoss >= thresholds.cp && verdict.winLoss >= thresholds.win;
 }

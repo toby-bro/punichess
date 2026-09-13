@@ -140,10 +140,18 @@ describe('isError', () => {
     assert.equal(isError(slip, MISSED_PUNISH), true, 'but it is a missed punishment');
   });
 
-  it('stays quiet once the game is decided on material', () => {
-    const verdict = verdictFor(DECIDED_CP + 300, DECIDED_CP - 100);
+  it('stays quiet in a decided game when the loss changes nothing', () => {
+    // Winning chances, not the evaluation, decide this: four pawns off +9.00
+    // still matters, four pawns off a position already lost does not.
+    const verdict = verdictFor(-900, -1500);
     assert.ok(verdict.cpLoss > OWN_BLUNDER.cp, 'the loss is large in raw centipawns');
     assert.equal(isError(verdict, OWN_BLUNDER), false, 'but nagging here is noise');
+  });
+
+  it('speaks up in a decided game when the loss changes everything', () => {
+    const verdict = verdictFor(DECIDED_CP + 300, DECIDED_CP - 100);
+    assert.ok(verdict.winLoss >= OWN_BLUNDER.win);
+    assert.equal(isError(verdict, OWN_BLUNDER), true, 'from +8.00 to +4.00 is worth hearing');
   });
 
   it('never suppresses a missed mate as "already decided"', () => {
@@ -379,5 +387,36 @@ describe('scoreOfMove sees a stalemate', () => {
 
   it('does not call an ordinary position a stalemate', () => {
     assert.equal(scoreOfMove([], INITIAL_FEN).stalemate, undefined);
+  });
+});
+
+describe('a blunder from a winning position', () => {
+  const at = (bestCp: number, playedCp: number) => {
+    const verdict = judge(search(['best', bestCp], ['played', playedCp]), 'played');
+    assert.ok(verdict);
+    return verdict;
+  };
+
+  it('is caught even though the game looked decided', () => {
+    // +9.00 down to +0.50: still not losing, and still the worst move of the
+    // game. An evaluation-based suppression rule used to swallow this whole.
+    const thrown = at(900, 50);
+    assert.ok(thrown.winLoss > 40, 'nearly half the win thrown away');
+    assert.equal(isError(thrown, OWN_BLUNDER), true);
+  });
+
+  it('is caught when it turns a win into a loss', () => {
+    assert.equal(isError(at(900, -200), OWN_BLUNDER), true);
+  });
+
+  it('still says nothing about a pawn that changes nothing', () => {
+    const slip = at(900, 780);
+    assert.ok(slip.cpLoss >= OWN_BLUNDER.cp, 'over the bar in raw centipawns');
+    assert.ok(slip.winLoss < OWN_BLUNDER.win, 'but under two percent of a won game');
+    assert.equal(isError(slip, OWN_BLUNDER), false);
+  });
+
+  it('still says nothing in a position already lost', () => {
+    assert.equal(isError(at(-900, -1500), OWN_BLUNDER), false);
   });
 });

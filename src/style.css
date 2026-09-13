@@ -331,15 +331,14 @@ button:disabled {
 }
 
 .moves-controls {
-  min-height: 0;
   margin-bottom: 10px;
 }
 
+/* Same size as every other button on the page: these sit in a row of their own
+   and looked like an afterthought at two thirds the height. */
 .moves-controls button {
-  min-height: 32px;
-  padding: 4px 10px;
-  font-size: 13px;
-  color: var(--dim);
+  min-height: 44px;
+  padding: 8px 12px;
 }
 
 .moves-empty {

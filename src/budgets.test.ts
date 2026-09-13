@@ -38,10 +38,16 @@ describe('search budgets', () => {
 
   it('lets the review reuse what playing already computed', () => {
     // The whole point of caching: a game just played needs no new searching.
-    assert.ok(
-      satisfies(SEARCH, REVIEW),
-      'a review request must be answerable by the search done while playing',
-    );
+    // Every budget used while playing has to answer a review request, not just
+    // the main one -- the opening is searched more cheaply, and if the review
+    // asks for more than that it re-searches the start of every game.
+    for (const [name, budget] of [
+      ['SEARCH', SEARCH],
+      ['OPENING', OPENING],
+      ['WIDE', WIDE],
+    ] as const) {
+      assert.ok(satisfies(budget, REVIEW), `${name} must answer a review request`);
+    }
   });
 
   it('lets an ordinary search reuse a wide one', () => {

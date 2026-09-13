@@ -56,8 +56,20 @@ export const PROBE: Budget = { multiPV: 2, nodes: 120_000 };
 /** Looking up a single move the narrow search did not list. */
 export const LOOKUP: Budget = { multiPV: 1, nodes: 350_000 };
 
-/** Per position in the post-game review. */
-export const REVIEW: Budget = { multiPV: 3, nodes: 350_000 };
+/**
+ * Per position in the post-game review.
+ *
+ * A floor, not a standard. The cache hands back whatever it holds for a position
+ * as long as it was at least this thorough, so a midgame position searched at
+ * SEARCH comes back in full; only a position nobody has looked at is searched
+ * afresh, and then cheaply.
+ *
+ * It therefore has to sit at or below *every* budget used while playing. It did
+ * not: the opening is searched at OPENING, which is cheaper, so the first moves
+ * of every game missed the cache and were searched all over again -- reviewing a
+ * game that was entirely known already.
+ */
+export const REVIEW: Budget = { multiPV: 3, nodes: 120_000 };
 
 /**
  * The most the bot may spend choosing one move.

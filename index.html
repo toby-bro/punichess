@@ -59,19 +59,6 @@
         <button id="another" type="button" hidden title="Ask for a different move in this position">
           Another move
         </button>
-      </div>
-
-      <div id="moves" class="moves" aria-label="Moves played"></div>
-      <div class="controls moves-controls">
-        <button id="expand-moves" type="button" aria-expanded="false">Show more</button>
-      </div>
-
-      <div class="bar">
-        <span id="score">spotted 0 · missed 0 · made 0</span>
-        <span id="acpl"></span>
-      </div>
-
-      <div class="controls">
         <label
           class="switch stamp"
           id="punish-box"
@@ -81,6 +68,29 @@
           <span class="track"></span>
           Punishing
         </label>
+      </div>
+
+      <div id="moves" class="moves" aria-label="Moves played"></div>
+      <div class="controls moves-controls">
+        <button id="expand-moves" type="button" aria-expanded="false">Show more</button>
+        <button id="new-game" type="button">New game</button>
+        <label
+          class="switch"
+          id="keep-box"
+          title="Save the game in progress when starting a new one"
+        >
+          <input id="keep" type="checkbox" />
+          <span class="track"></span>
+          Save on new
+        </label>
+      </div>
+
+      <div class="bar">
+        <span id="score">spotted 0 · missed 0 · made 0</span>
+        <span id="acpl"></span>
+      </div>
+
+      <div class="controls">
         <span class="spacer"></span>
         <button id="swap" type="button" title="Take over the other side, keeping this position">
           Swap sides
@@ -95,16 +105,6 @@
           <input id="evaluate" type="checkbox" />
           <span class="track"></span>
           Evaluate new positions
-        </label>
-        <button id="new-game" type="button">New game</button>
-        <label
-          class="switch"
-          id="keep-box"
-          title="Save the game in progress when starting a new one"
-        >
-          <input id="keep" type="checkbox" />
-          <span class="track"></span>
-          Save on new
         </label>
       </div>
 
