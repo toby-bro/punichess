@@ -567,6 +567,25 @@ button:disabled {
   font-weight: 600;
 }
 
+/*
+ * A move that turned out to be a trap.
+ *
+ * Amber rather than the pink a bot error gets, because they are different
+ * things: one is the bot going wrong, the other is the bot playing well and
+ * waiting to see whether you help. The glyph is held back to a size the line can
+ * carry -- an emoji set at the text size would be the tallest thing in the list
+ * and would set the row height for every other move.
+ */
+.moves .move.trap {
+  color: #d9a441;
+}
+
+.moves .trap-mark {
+  font-size: 0.8em;
+  margin-left: 2px;
+  vertical-align: 2px;
+}
+
 /* Raised like a footnote mark, and not scaled down further: a superscript on a
    14px move list is already close to unreadable. */
 .moves .punished-mark {

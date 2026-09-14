@@ -253,6 +253,14 @@ async function main(): Promise<void> {
    */
   const traps = new Map<number, string>();
   const trapsScored = new Set<number>();
+
+  /**
+   * Bot moves that turned out to be traps, once you have answered them.
+   *
+   * Kept apart from `traps` because that one knows about a trap the moment it is
+   * laid, and showing it then would answer the question for you.
+   */
+  const sprung = new Set<number>();
   /**
    * The review, once it has been run. Declared here rather than beside the
    * review code because the game starts before that point is reached, and the
@@ -326,7 +334,7 @@ async function main(): Promise<void> {
     drawable: { enabled: true },
   });
 
-  let moves = mountMoves(element('moves'), tree, { onSelect: goTo, revealed });
+  let moves = mountMoves(element('moves'), tree, { onSelect: goTo, revealed, sprung });
   const games = mountLibrary(element('games'), library, {
     onLoad: id => {
       void openGame(id);
@@ -769,13 +777,14 @@ async function main(): Promise<void> {
     scored.clear();
     traps.clear();
     trapsScored.clear();
+    sprung.clear();
     blundersLeft = settings.blundersPerGame;
     spotted = 0;
     missed = 0;
     made = 0;
     mode = { kind: 'play' };
     closeReview();
-    moves = mountMoves(element('moves'), tree, { onSelect: goTo, revealed });
+    moves = mountMoves(element('moves'), tree, { onSelect: goTo, revealed, sprung });
     panel.update(settings);
     appearance.update(settings);
     updateScore();
@@ -950,6 +959,10 @@ async function main(): Promise<void> {
     trapsScored.add(here);
     if (square(uci, 2) === offered) bitten++;
     else dodged++;
+    // Settled, so it can be marked: the bot's move is the node you are standing
+    // on, and it is safe to name now that you have committed to an answer.
+    sprung.add(here);
+    moves.render();
     updateScore();
   }
 
@@ -1477,7 +1490,7 @@ async function main(): Promise<void> {
     bitten = game.metrics.bitten;
     you = game.playedAs;
     mode = { kind: 'play' };
-    moves = mountMoves(element('moves'), tree, { onSelect: goTo, revealed });
+    moves = mountMoves(element('moves'), tree, { onSelect: goTo, revealed, sprung });
     board.set({ orientation: you });
     updateScore();
     await engine.newGame();
@@ -1504,6 +1517,7 @@ async function main(): Promise<void> {
     scored.clear();
     traps.clear();
     trapsScored.clear();
+    sprung.clear();
     spotted = game.metrics.spotted;
     missed = game.metrics.missed;
     made = game.metrics.made;
@@ -1512,7 +1526,7 @@ async function main(): Promise<void> {
     you = game.playedAs;
     mode = { kind: 'play' };
     closeReview();
-    moves = mountMoves(element('moves'), tree, { onSelect: goTo, revealed });
+    moves = mountMoves(element('moves'), tree, { onSelect: goTo, revealed, sprung });
     board.set({ orientation: you });
     updateScore();
     status(`Opened “${game.name}”. Play on from anywhere.`);
@@ -1559,7 +1573,7 @@ async function main(): Promise<void> {
       made = 0;
       mode = { kind: 'play' };
       closeReview();
-      moves = mountMoves(element('moves'), tree, { onSelect: goTo, revealed });
+      moves = mountMoves(element('moves'), tree, { onSelect: goTo, revealed, sprung });
       updateScore();
       pgnNote(`Loaded ${tree.nodes.length - 1} moves. Play on from anywhere.`);
       afterNavigation();

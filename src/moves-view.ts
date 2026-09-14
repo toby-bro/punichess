@@ -17,7 +17,24 @@ export interface MovesOptions {
   readonly onSelect: (id: number) => void;
   /** Bot errors you have been shown, which are worth marking once known. */
   readonly revealed: ReadonlySet<number>;
+  /**
+   * Traps you have already answered.
+   *
+   * Answered, not laid. Marking a trap the moment it is set would be handing you
+   * the answer: the whole question is whether you see that the piece should not
+   * be taken, and a list that says "this one is a trap" has just told you.
+   */
+  readonly sprung: ReadonlySet<number>;
 }
+
+/**
+ * What sits on a move that turned out to be a trap.
+ *
+ * One glyph, swapped here and nowhere else. An emoji rather than a typographic
+ * mark because this is the one thing in the list you want to find by scanning
+ * rather than by reading.
+ */
+const TRAP_MARK = '\u{1F4A3}';
 
 export function mountMoves(root: HTMLElement, tree: GameTree, options: MovesOptions): MovesView {
   const view: MovesView = {
@@ -93,6 +110,8 @@ function moveElement(
   if (move?.deliberateError === true && options.revealed.has(node.id)) {
     span.classList.add('bot-error');
   }
+  const wasTrap = options.sprung.has(node.id);
+  if (wasTrap) span.classList.add('trap');
 
   // White's moves carry "12.", Black's carry "12..." only when the run is broken.
   const number = Math.ceil(node.ply / 2);
@@ -110,8 +129,15 @@ function moveElement(
     mark.textContent = '*';
     span.append(mark);
   }
-  span.title =
-    move?.punished === true
+  if (wasTrap) {
+    const mark = document.createElement('span');
+    mark.className = 'trap-mark';
+    mark.textContent = TRAP_MARK;
+    span.append(mark);
+  }
+  span.title = wasTrap
+    ? 'A trap: taking what this offered would have cost you'
+    : move?.punished === true
       ? 'You played this knowing it was wrong, and asked to be punished for it'
       : move?.playedAnyway === true
         ? 'You were warned about this move and played it'

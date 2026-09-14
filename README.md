@@ -54,6 +54,13 @@ is not a trap, it is a blunder wearing a costume. Three things have to hold:
 
 `trapShare` sets how often one is attempted.
 
+A trap that has been answered is marked in the move list with a 💣, in amber
+rather than the pink a bot error gets — one is the bot going wrong, the other is
+the bot playing well and waiting to see whether you help. **Answered**, not laid:
+marking it when it is set would hand you the answer, since the whole question is
+whether you see that the piece should not be taken. `TRAP_MARK` in
+`src/moves-view.ts` is the one place the glyph lives.
+
 A fourth counter appears next to the others once there has been a trap to answer:
 **dodged**, as a fraction of the traps laid. It is settled by the first thing you
 do about it rather than by what you end up playing — reach for the piece and you
