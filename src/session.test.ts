@@ -30,7 +30,16 @@ const game = (moves = 1): NewGame => ({
   name: 'Test',
   playedAs: 'white',
   settings: {} as NewGame['settings'],
-  metrics: { moves, youAcpl: 10, botAcpl: 20, spotted: 1, missed: 2, made: 3 },
+  metrics: {
+    moves,
+    youAcpl: 10,
+    botAcpl: 20,
+    spotted: 1,
+    missed: 2,
+    made: 3,
+    dodged: 0,
+    bitten: 0,
+  },
   start: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
   nodes: Array.from({ length: moves }, (_, i) => ({
     id: i + 1,

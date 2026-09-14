@@ -52,6 +52,9 @@ export interface GameMetrics {
   readonly spotted: number;
   readonly missed: number;
   readonly made: number;
+  /** Traps you declined, and traps you reached for. */
+  readonly dodged: number;
+  readonly bitten: number;
 }
 
 export interface SavedGame {
@@ -187,6 +190,8 @@ const ZERO_METRICS: GameMetrics = {
   spotted: 0,
   missed: 0,
   made: 0,
+  dodged: 0,
+  bitten: 0,
 };
 
 function parseMetrics(raw: unknown): GameMetrics {
@@ -200,6 +205,8 @@ function parseMetrics(raw: unknown): GameMetrics {
     botAcpl: read('botAcpl'),
     spotted: read('spotted'),
     missed: read('missed'),
+    dodged: read('dodged'),
+    bitten: read('bitten'),
     made: read('made'),
   };
 }

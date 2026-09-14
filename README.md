@@ -54,6 +54,12 @@ is not a trap, it is a blunder wearing a costume. Three things have to hold:
 
 `trapShare` sets how often one is attempted.
 
+A fourth counter appears next to the others once there has been a trap to answer:
+**dodged**, as a fraction of the traps laid. It is settled by the first thing you
+do about it rather than by what you end up playing — reach for the piece and you
+bit, even if being stopped talks you out of it, because that is the interruption
+working rather than you having seen it.
+
 ## It remembers what you got wrong
 
 Every move you are stopped for is remembered **against the position it was made

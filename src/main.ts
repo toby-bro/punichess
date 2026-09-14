@@ -226,6 +226,8 @@ async function main(): Promise<void> {
   let missed = 0;
   /** Your own moves that got you stopped, counted once each however often tried. */
   let made = 0;
+  let dodged = 0;
+  let bitten = 0;
   /** Bot errors you have been shown, so the move list can mark them. */
   const revealed = new Set<number>();
 
@@ -241,6 +243,16 @@ async function main(): Promise<void> {
 
   /** Positions already counted, so each error the bot makes scores once. */
   const scored = new Set<number>();
+
+  /**
+   * Where a trap is sitting, by the position it was offered in.
+   *
+   * A trap is only a trap until you answer it, so it is remembered against the
+   * position and settled by your next move there: take what is on that square
+   * and you bit, play anything else and you dodged.
+   */
+  const traps = new Map<number, string>();
+  const trapsScored = new Set<number>();
   /**
    * The review, once it has been run. Declared here rather than beside the
    * review code because the game starts before that point is reached, and the
@@ -662,7 +674,11 @@ async function main(): Promise<void> {
   }
 
   function updateScore(): void {
-    scoreEl.textContent = `spotted ${spotted} · missed ${missed} · made ${made}`;
+    const trapped = dodged + bitten;
+    // Only once there has been a trap to answer: a counter that reads zero all
+    // game is a counter nobody learns to read.
+    const dodges = trapped === 0 ? '' : ` · dodged ${dodged}/${trapped}`;
+    scoreEl.textContent = `spotted ${spotted} · missed ${missed} · made ${made}${dodges}`;
     const yours = stats.summary('you');
     const theirs = stats.summary('bot');
     const mates =
@@ -747,6 +763,8 @@ async function main(): Promise<void> {
     revealed.clear();
     stumbled.clear();
     scored.clear();
+    traps.clear();
+    trapsScored.clear();
     blundersLeft = settings.blundersPerGame;
     spotted = 0;
     missed = 0;
@@ -795,6 +813,8 @@ async function main(): Promise<void> {
       render();
       return;
     }
+
+    scoreTrap(uci);
 
     /*
      * While reviewing, a move is a move on an analysis board.
@@ -910,6 +930,23 @@ async function main(): Promise<void> {
     updateScore();
     syncSaved();
     void botTurn();
+  }
+
+  /**
+   * Settle a trap, once, on the first thing you do about it.
+   *
+   * Counted on what you reached for rather than on what you ended up playing: if
+   * you take the piece and are stopped, you fell for it, and thinking better of
+   * it afterwards is the interruption working rather than you having seen it.
+   */
+  function scoreTrap(uci: string): void {
+    const here = tree.current.id;
+    const offered = traps.get(here);
+    if (offered === undefined || trapsScored.has(here)) return;
+    trapsScored.add(here);
+    if (square(uci, 2) === offered) bitten++;
+    else dodged++;
+    updateScore();
   }
 
   /**
@@ -1114,6 +1151,9 @@ async function main(): Promise<void> {
 
       // Say nothing about it. Spotting it is the whole point.
       tree.play(move.uci, { deliberateError: move.deliberateError });
+      // Nor about this one. What is on that square is takeable and should not be
+      // taken; whether you work that out is the question.
+      if (move.kind === 'trap') traps.set(tree.current.id, square(move.uci, 2));
       thinking = false;
       updateScore();
       syncSaved();
@@ -1317,6 +1357,8 @@ async function main(): Promise<void> {
         spotted,
         missed,
         made,
+        dodged,
+        bitten,
       },
       start: tree.root.fen,
       ...(rootEval ? { rootEval } : {}),
@@ -1414,6 +1456,8 @@ async function main(): Promise<void> {
     spotted = game.metrics.spotted;
     missed = game.metrics.missed;
     made = game.metrics.made;
+    dodged = game.metrics.dodged;
+    bitten = game.metrics.bitten;
     you = game.playedAs;
     mode = { kind: 'play' };
     moves = mountMoves(element('moves'), tree, { onSelect: goTo, revealed });
@@ -1441,9 +1485,13 @@ async function main(): Promise<void> {
     revealed.clear();
     stumbled.clear();
     scored.clear();
+    traps.clear();
+    trapsScored.clear();
     spotted = game.metrics.spotted;
     missed = game.metrics.missed;
     made = game.metrics.made;
+    dodged = game.metrics.dodged;
+    bitten = game.metrics.bitten;
     you = game.playedAs;
     mode = { kind: 'play' };
     closeReview();

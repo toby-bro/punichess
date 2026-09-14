@@ -38,7 +38,16 @@ const gameFrom = (tree: GameTree, evals = new Map<number, number>()): NewGame =>
   name: 'Test game',
   playedAs: 'white',
   settings: DEFAULT_SETTINGS,
-  metrics: { moves: 4, youAcpl: 30, botAcpl: 45, spotted: 1, missed: 2, made: 3 },
+  metrics: {
+    moves: 4,
+    youAcpl: 30,
+    botAcpl: 45,
+    spotted: 1,
+    missed: 2,
+    made: 3,
+    dodged: 0,
+    bitten: 0,
+  },
   start: tree.root.fen,
   nodes: serialiseTree(tree, node => {
     const cp = evals.get(node.id);
