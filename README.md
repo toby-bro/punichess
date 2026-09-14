@@ -22,9 +22,14 @@ Two interruptions, armed by different rules:
 | Either side, a forced mate is on | mate missed or walked into   | always fires, never suppressed          |
 
 The bot never announces its errors. Spotting them is the entire point. Three
-counters keep score: **spotted** (you punished one), **missed** (you let one go),
-and **made** (your own moves that got you stopped, counted once each however many
-times you tried them).
+counters keep score: **spotted** (you punished one unaided), **missed** (you were
+stopped for it, or asked to be shown), and **made** (your own moves that got you
+stopped, counted once each however many times you tried them).
+
+Each error the bot makes scores exactly once, and being stopped settles it. Find
+the right move on the third try and it is still a miss: the interruption only
+happens because you had already played something else, and a count that cannot
+tell that from seeing it first time is not counting anything.
 
 ## It remembers what you got wrong
 

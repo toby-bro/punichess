@@ -228,6 +228,19 @@ async function main(): Promise<void> {
   let made = 0;
   /** Bot errors you have been shown, so the move list can mark them. */
   const revealed = new Set<number>();
+
+  /**
+   * Positions where the bot had just erred and you were stopped anyway.
+   *
+   * Kept per position rather than read off the tree, because the tree only
+   * remembers the move you settled on. Find it on the third try and the game
+   * ends up looking exactly like finding it first time, which is how a game with
+   * two misses in it came out as "spotted 2, missed 0".
+   */
+  const stumbled = new Set<number>();
+
+  /** Positions already counted, so each error the bot makes scores once. */
+  const scored = new Set<number>();
   /**
    * The review, once it has been run. Declared here rather than beside the
    * review code because the game starts before that point is reached, and the
@@ -732,6 +745,8 @@ async function main(): Promise<void> {
     // them onto a board you have only just set up says nothing about this game.
     memory.clear();
     revealed.clear();
+    stumbled.clear();
+    scored.clear();
     blundersLeft = settings.blundersPerGame;
     spotted = 0;
     missed = 0;
@@ -867,11 +882,14 @@ async function main(): Promise<void> {
       }
 
       if (tree.punishArmed) {
-        spotted++;
+        const stopped = stumbled.has(tree.current.id);
+        scorePunish(!stopped);
         // You found it, so marking it in the list gives nothing away, and it is
         // the position you will want to come back to.
         revealed.add(tree.current.id);
-        status('Good — you saw it.');
+        status(
+          stopped ? 'That is the one — though you needed stopping first.' : 'Good — you saw it.',
+        );
       }
       accept(uci);
     } catch (error) {
@@ -894,8 +912,27 @@ async function main(): Promise<void> {
     void botTurn();
   }
 
+  /**
+   * Score one of the bot's errors, once.
+   *
+   * Spotted means you found it yourself. Being stopped, thinking again and then
+   * finding it is a miss: the whole point of the interruption is that you had
+   * already played something else, and a count that cannot tell those apart is
+   * counting nothing.
+   */
+  function scorePunish(found: boolean): void {
+    const here = tree.current.id;
+    if (scored.has(here)) return;
+    scored.add(here);
+    if (found) spotted++;
+    else missed++;
+    updateScore();
+  }
+
   /** The interruption: the move comes back, drawn in red, with nothing explained. */
   function stopYou(uci: string, verdict: Verdict): void {
+    // Whatever happens next, you did not see this one unaided.
+    if (tree.punishArmed) stumbled.add(tree.current.id);
     const previous = mode.kind === 'rejected' ? mode.attempts : [];
     // Counted per move rather than per try: playing the same wrong move twice is
     // one mistake made twice, and the memory already counts the repetition.
@@ -946,9 +983,8 @@ async function main(): Promise<void> {
     const attempts = mode.attempts;
     const worst = attempts.reduce((a, b) => (b.verdict.cpLoss > a.verdict.cpLoss ? b : a));
     if (tree.punishArmed) {
-      missed++;
+      scorePunish(false);
       if (tree.current.move) revealed.add(tree.current.id);
-      updateScore();
     }
 
     const line = worst.verdict.best.moves.slice(0, REVEAL_DEPTH);
@@ -1403,6 +1439,8 @@ async function main(): Promise<void> {
     stats.reset();
     memory.restore(game.mistakes);
     revealed.clear();
+    stumbled.clear();
+    scored.clear();
     spotted = game.metrics.spotted;
     missed = game.metrics.missed;
     made = game.metrics.made;
@@ -1449,6 +1487,8 @@ async function main(): Promise<void> {
       stats.reset();
       memory.clear();
       revealed.clear();
+      stumbled.clear();
+      scored.clear();
       spotted = 0;
       missed = 0;
       made = 0;
