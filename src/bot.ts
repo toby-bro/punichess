@@ -7,7 +7,7 @@
  * are punishable -- see `pickBlunder` and `pickMateTrap`.
  */
 
-import { fenAfter, moveKind, positionHash } from './chess.ts';
+import { capturesTo, fenAfter, moveKind, positionHash } from './chess.ts';
 import { DECIDED_CP } from './referee.ts';
 import type { Settings } from './settings.ts';
 import type { PvLine } from './uci.ts';
@@ -36,6 +36,16 @@ export const PUNISH_MARGIN = 60;
  * than one that occasionally fails to find an error worth making.
  */
 export const MAX_PROBES = 5;
+
+/**
+ * How many searches a trap may cost before the bot gives up looking for one.
+ *
+ * Every offer costs one search to find out what the position is worth without
+ * taking, and one more for each way of taking it. That adds up fast, and a bot
+ * that thinks for ten seconds is worse company than one that lays a trap less
+ * often.
+ */
+export const MAX_TRAP_SEARCHES = 5;
 
 /**
  * How far behind the bot must be before a repetition becomes fair play.
@@ -107,7 +117,7 @@ export interface MoveContext {
   readonly avoid?: ReadonlySet<number> | undefined;
 }
 
-export type MoveKind = 'quiet' | 'blunder' | 'mate-trap';
+export type MoveKind = 'quiet' | 'blunder' | 'mate-trap' | 'trap';
 
 export interface BotMove {
   readonly uci: string;
@@ -198,6 +208,19 @@ export async function chooseMove(
     takesWhatYouHung(fen, best, context)
   ) {
     return { uci: best.moves[0], kind: 'quiet', deliberateError: false, cpLoss: 0 };
+  }
+
+  // A trap instead, on a move where no error was wanted. One expensive hunt per
+  // move at most: they are alternatives, not additions.
+  if (
+    !context.wantsError &&
+    Math.abs(best.cp) <= DECIDED_CP &&
+    random() < policy.settings.trapShare
+  ) {
+    const trap = await pickTrap(policy, fen, best, allowed(lines, fen, exclude, avoid));
+    if (trap) {
+      return { uci: trap.uci, kind: 'trap', deliberateError: false, cpLoss: trap.cpLoss };
+    }
   }
 
   if (context.wantsError && Math.abs(best.cp) <= DECIDED_CP) {
@@ -424,6 +447,80 @@ function sampleByCost(
     left.splice(left.indexOf(pick), 1);
   }
   return chosen;
+}
+
+/**
+ * Find a piece worth offering: one that is bad to take.
+ *
+ * The other way round from an error. A blunder is the bot going wrong and
+ * waiting to see whether you notice; a trap is the bot playing a perfectly good
+ * move that happens to leave something where you can take it, and the taking is
+ * what loses. Nothing is sacrificed in the ordinary sense -- if you decline, the
+ * bot has simply played a decent move.
+ *
+ * Which is why candidates come from the ordinary search rather than the wide
+ * one. A trap lives among the moves the engine already likes; a move that is bad
+ * for the bot whether or not you take is not a trap, it is a blunder wearing a
+ * costume.
+ */
+export async function pickTrap(
+  policy: Policy,
+  fen: string,
+  best: PvLine,
+  lines: readonly PvLine[],
+): Promise<Candidate | undefined> {
+  const random = policy.random ?? Math.random;
+  const probe = policy.probe ?? policy.search;
+  const { quietBand, ownBlunderCp } = policy.settings;
+
+  let searches = 0;
+  for (const candidate of shuffle(
+    lines.filter(line => lossOf(best, line) <= quietBand),
+    random,
+  )) {
+    const uci = candidate.moves[0];
+    let after: string;
+    let takers: string[];
+    try {
+      after = fenAfter(fen, uci);
+      takers = capturesTo(after, destOf(uci));
+    } catch {
+      continue;
+    }
+    // Nothing is being offered, or more ways to take it than there is budget to
+    // check -- and a trap with an unexamined way out of it is not a trap.
+    if (takers.length === 0 || searches + 1 + takers.length > MAX_TRAP_SEARCHES) continue;
+
+    // Taking has to look like it wins something, or nobody is tempted and the
+    // trap never springs. Undefended is the plainest case; a defended piece
+    // still tempts when it is worth more than whatever takes it.
+    const tempting = takers.some(taker => {
+      const kind = moveKind(after, taker);
+      return !kind.defended || kind.value >= FREE_PIECE_CP;
+    });
+    if (!tempting) continue;
+
+    // What the position is worth to you if you leave it alone.
+    searches++;
+    const [declined] = await probe(after);
+    if (!declined) continue;
+
+    // Every way of taking has to be bad. One good capture and the trap is just a
+    // piece you gave away, and being stopped for the one bad way of taking when
+    // a good one existed would be a lie about the position.
+    let springs = true;
+    for (const taker of takers) {
+      searches++;
+      const [answer] = await probe(fenAfter(after, taker));
+      // The reply is scored for the bot, so taking is worth the negative of it.
+      if (!answer || declined.cp - -answer.cp < ownBlunderCp) {
+        springs = false;
+        break;
+      }
+    }
+    if (springs) return { uci, cpLoss: lossOf(best, candidate) };
+  }
+  return undefined;
 }
 
 /**

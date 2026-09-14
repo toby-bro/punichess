@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   HOLD_FOR_DRAW_CP,
   MAX_PROBES,
+  MAX_TRAP_SEARCHES,
   type Policy,
   type Search,
   chooseMove,
@@ -11,6 +12,7 @@ import {
   pickBlunder,
   pickHonest,
   pickMateTrap,
+  pickTrap,
   punishKind,
 } from './bot.ts';
 import { INITIAL_FEN, fenAfter, moveKind, positionHash } from './chess.ts';
@@ -675,5 +677,68 @@ describe('ignoring what you just threatened', () => {
       'a2a3',
     );
     assert.ok(found);
+  });
+});
+
+describe('pickTrap', () => {
+  /*
+   * A knight sitting on e5 where either the d6 or the f6 pawn can take it.
+   * Undefended, worth a piece: as tempting as an offer gets.
+   */
+  const offering = 'rnbqkbnr/ppp2ppp/3p1p2/4N3/8/8/PPPPPPPP/RNBQKB1R w KQkq - 0 4';
+  const beforeOffer = 'rnbqkbnr/ppp2ppp/3p1p2/8/8/4N3/PPPPPPPP/RNBQKB1R w KQkq - 0 4';
+
+  it('offers a piece when every way of taking it loses', async () => {
+    const wide = search(['e3g4', 20], ['e3d5', 10], ['e3f5', 0]);
+    const [best] = wide;
+    assert.ok(best);
+    // Leaving it alone is level; taking it is worth -250 to you, which is the
+    // bot's +250 seen from the other side.
+    const probe: Search = fen =>
+      Promise.resolve(
+        search([fen.includes(' w ') ? 'a2a3' : 'a7a6', fen.includes(' w ') ? 250 : 0]),
+      );
+    const found = await pickTrap(policy({ probe, random: () => 0.5 }), beforeOffer, best, wide);
+    assert.ok(found, 'a piece nobody can profitably take is worth offering');
+  });
+
+  it('declines to offer when one way of taking is fine', async () => {
+    const wide = search(['e3g4', 20], ['e3d5', 10], ['e3f5', 0]);
+    const [best] = wide;
+    assert.ok(best);
+    // Nothing is gained by taking or declining, so it is just a piece given away.
+    const probe: Search = () => Promise.resolve(search(['a2a3', 0]));
+    const found = await pickTrap(policy({ probe, random: () => 0.5 }), beforeOffer, best, wide);
+    assert.equal(found, undefined, 'a piece that can be taken for free is not a trap');
+  });
+
+  it('offers nothing when nothing can be taken', async () => {
+    const quiet = search(['a2a3', 0], ['h2h3', 0]);
+    const [best] = quiet;
+    assert.ok(best);
+    let searched = 0;
+    const probe: Search = () => {
+      searched++;
+      return Promise.resolve(search(['a7a6', 0]));
+    };
+    const found = await pickTrap(policy({ probe, random: () => 0.5 }), offering, best, quiet);
+    assert.equal(found, undefined);
+    assert.equal(searched, 0, 'no offer, no searching');
+  });
+
+  it('never spends more searches than it is allowed', async () => {
+    const wide = search(['e3g4', 20], ['e3d5', 10], ['e3f5', 0]);
+    const [best] = wide;
+    assert.ok(best);
+    let searched = 0;
+    const probe: Search = () => {
+      searched++;
+      return Promise.resolve(search(['a2a3', 0]));
+    };
+    await pickTrap(policy({ probe, random: () => 0.5 }), beforeOffer, best, wide);
+    assert.ok(
+      searched <= MAX_TRAP_SEARCHES,
+      `spent ${String(searched)} searches, allowed ${String(MAX_TRAP_SEARCHES)}`,
+    );
   });
 });

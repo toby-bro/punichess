@@ -31,6 +31,29 @@ the right move on the third try and it is still a miss: the interruption only
 happens because you had already played something else, and a count that cannot
 tell that from seeing it first time is not counting anything.
 
+## Traps
+
+Not every offer is a gift. Sometimes the bot plays a perfectly good move that
+leaves a piece where you can take it — and taking it is what loses. A knight
+parked next to a pawn, a pawn that cannot be touched: decline and the bot has
+simply played a decent move, take it and you are stopped like any other blunder,
+because the threshold is the same one.
+
+A trap is not an error and is not drawn from the error allowance — it costs the
+bot nothing when you decline. Candidates come from the ordinary search rather
+than the wide one, since a move that is bad for the bot whether or not you take
+is not a trap, it is a blunder wearing a costume. Three things have to hold:
+
+- **Taking must look like it wins something.** Undefended is the plain case; a
+  defended piece still tempts when it is worth more than what takes it.
+- **Every way of taking has to be bad.** One good capture and it is just a piece
+  given away, and being stopped for the bad capture while a good one existed
+  would be a lie about the position.
+- **It has to cost you enough to be worth stopping you for** — the same
+  `ownBlunderCp` that governs every other interruption.
+
+`trapShare` sets how often one is attempted.
+
 ## It remembers what you got wrong
 
 Every move you are stopped for is remembered **against the position it was made

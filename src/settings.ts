@@ -86,6 +86,14 @@ export interface Settings {
   readonly blunderFromPly: number;
   /** Share of deliberate errors that hand you a forced mate instead. */
   readonly mateTrapShare: number;
+  /**
+   * Chance of laying a trap on a move where no error was wanted.
+   *
+   * A trap is not an error: the bot plays a good move that happens to leave
+   * something takeable, and taking it is what loses. It costs the bot nothing
+   * if you decline, so it is not drawn from the error allowance.
+   */
+  readonly trapShare: number;
   /** The longest forced mate the bot will hand you. */
   readonly maxMateDepth: number;
   /** Centipawn loss at which your own move gets you stopped. */
@@ -115,6 +123,7 @@ export const DEFAULT_SETTINGS: Settings = {
   blundersPerGame: 8,
   blunderFromPly: 2,
   mateTrapShare: 0.45,
+  trapShare: 0.25,
   maxMateDepth: 4,
   ownBlunderCp: 110,
   missedPunishCp: 50,
@@ -131,6 +140,7 @@ const LIMITS = {
   blundersPerGame: [0, 20],
   blunderFromPly: [0, 60],
   mateTrapShare: [0, 1],
+  trapShare: [0, 1],
   maxMateDepth: [1, 5],
   ownBlunderCp: [20, 500],
   missedPunishCp: [10, 400],
@@ -162,8 +172,9 @@ export const PRESETS: readonly Preset[] = [
   },
   {
     label: 'Traps',
-    description: 'Fewer errors, bigger ones, and always a tactic to punish them.',
+    description: 'Fewer errors, bigger ones, and plenty of poisoned pieces.',
     settings: {
+      trapShare: 0.5,
       targetAcpl: 20,
       quietBand: 90,
       blunderMin: 150,

@@ -10,7 +10,7 @@ import { chessgroundDests } from 'chessops/compat';
 import { INITIAL_FEN, makeFen, parseFen } from 'chessops/fen';
 import { makeSan, parseSan } from 'chessops/san';
 import type { Color, Move, Role } from 'chessops/types';
-import { makeSquare, makeUci, parseUci } from 'chessops/util';
+import { makeSquare, makeUci, parseSquare, parseUci } from 'chessops/util';
 
 export { INITIAL_FEN };
 
@@ -169,6 +169,24 @@ export function moveKind(fen: string, uci: string): MoveKind {
     defended,
     value: taken ? VALUE[taken.role] : 0,
   };
+}
+
+/**
+ * Every legal way to capture whatever stands on a square.
+ *
+ * Used to find out what a piece is being offered to, and at what. A trap is only
+ * a trap if taking is possible, and only a fair one if every way of taking is
+ * bad -- so this returns all of them, not the first.
+ */
+export function capturesTo(fen: string, square: string): string[] {
+  const pos = position(fen);
+  const target = parseSquare(square);
+  if (target === undefined || !pos.board.occupied.has(target)) return [];
+  const taking: string[] = [];
+  for (const [from, targets] of pos.allDests()) {
+    if (targets.has(target)) taking.push(makeSquare(from) + square);
+  }
+  return taking;
 }
 
 /** Legal destinations per origin square, in the shape chessground wants. */
