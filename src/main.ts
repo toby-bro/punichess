@@ -1110,6 +1110,19 @@ async function main(): Promise<void> {
       return;
     }
 
+    /*
+     * The bot thinking here means you have gone back to playing.
+     *
+     * So the review closes itself, rather than making you close it. Its arrows
+     * and its evaluation bar are for reading a game that has been played; left
+     * up while the bot answers you they would be telling you the best move in a
+     * position you are supposed to be working out.
+     *
+     * Only when it actually thinks. Stepping back through a line it has already
+     * answered is reading, not playing, and that path returns above.
+     */
+    if (reviewing) closeReview();
+
     const startedAt = Date.now();
     try {
       const fen = tree.fen;

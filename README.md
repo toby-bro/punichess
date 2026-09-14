@@ -153,7 +153,10 @@ mostly asks for work already done. Only positions it has never seen cost
 anything.
 
 Reviewing is also an analysis board. Both colours are yours to move, nothing is
-judged or counted, and nothing answers you — you play both sides. Any move that
+judged or counted, and nothing answers you — you play both sides. Ask the bot to
+play, with **▶** at the end of a line where it owes a move, and the review closes
+itself: its arrows would otherwise be telling you the best move in a position you
+are meant to be working out. Any move that
 is not already in the game becomes a branch. The three best moves and the
 evaluation are shown at every position, including ones you have just invented,
 which is what _Evaluate new positions_ does; it is on by default here and can be
