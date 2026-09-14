@@ -7,6 +7,7 @@ import {
   LEGIBLE_LABEL,
   arrow,
   costLabel,
+  costLabelHtml,
   evalLabel,
   readable,
   rememberedArrow,
@@ -147,5 +148,37 @@ test('an engine evaluation fits an arrow too', () => {
   }
   for (const mate of [1, 9, 12, -1, -12]) {
     assert.ok(evalLabel(0, mate).length <= LEGIBLE_LABEL);
+  }
+});
+
+test('a mate you missed is struck through; a mate you allowed is not', () => {
+  const missed = costLabelHtml({ cpLoss: 9999, missesMate: true, mateIn: 3 });
+  const allowed = costLabelHtml({ cpLoss: 9999, hangsMate: true });
+
+  assert.match(missed, /line-through/);
+  assert.match(missed, />#3</, 'the text itself is unchanged, only struck');
+  assert.equal(allowed, '#', 'a mate coming your way is the plain one');
+  assert.notEqual(missed, allowed, 'they are opposite things and must not read alike');
+});
+
+test('nothing else picks up a strike', () => {
+  // A mate found late was found. Stalemate is neither. A cost in pawns has no
+  // hash to cross out.
+  assert.equal(costLabelHtml({ cpLoss: 9999, missesMate: true, mateLater: 4 }), '#Δ4');
+  assert.equal(costLabelHtml({ cpLoss: 9999, stalemate: true, missesMate: true }), '½');
+  assert.equal(costLabelHtml({ cpLoss: 250 }), '−2.5');
+});
+
+test('the struck label still says what the plain one says', () => {
+  // The length cap is measured on the plain text, since that is what is drawn;
+  // the markup adds no width.
+  for (const cost of [
+    { cpLoss: 9999, missesMate: true, mateIn: 1 },
+    { cpLoss: 9999, missesMate: true, mateIn: 12 },
+    { cpLoss: 9999, missesMate: true },
+  ]) {
+    const plain = costLabel(cost);
+    assert.ok(plain.length <= LEGIBLE_LABEL);
+    assert.ok(costLabelHtml(cost).includes(`>${plain}<`));
   }
 });

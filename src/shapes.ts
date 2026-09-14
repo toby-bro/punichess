@@ -52,7 +52,7 @@ export const arrow = (uci: string, brush: string, label?: string): DrawShape => 
  * carries a statistic nobody can read.
  */
 export const rememberedArrow = (uci: string, cost: Cost): DrawShape =>
-  arrow(uci, 'paleRed', costLabel(cost));
+  arrow(uci, 'paleRed', costLabelHtml(cost));
 
 /**
  * How much a move cost, short enough to sit on an arrow.
@@ -94,6 +94,26 @@ export function evalLabel(cp: number, mate?: number): string {
   const pawns = cp / 100;
   const text = Math.abs(pawns) >= 9.95 ? Math.round(pawns).toFixed(0) : pawns.toFixed(1);
   return pawns > 0 ? `+${text}` : text;
+}
+
+/**
+ * The same label, with a mate you let slip struck through.
+ *
+ * Both halves of a mate read "#": the one you had and did not play, and the one
+ * you have just allowed against yourself. They are opposite things and the arrow
+ * said the same word for each. A line through it says which.
+ *
+ * Chessground writes a label with innerHTML, and since style.css took the type
+ * size off the character count, markup in here costs nothing. Everything in it
+ * is written by this file; none of it comes from anywhere else.
+ */
+export function costLabelHtml(cost: Cost): string {
+  const text = costLabel(cost);
+  // A mate that arrived late is already marked "#Δn" and is not a mate
+  // missed -- it was found, slowly.
+  const missed = cost.missesMate === true && cost.mateLater === undefined;
+  if (!missed || !text.startsWith('#')) return text;
+  return `<tspan style="text-decoration:line-through">${text}</tspan>`;
 }
 
 /**

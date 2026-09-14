@@ -50,7 +50,7 @@ import { mountMoves } from './moves-view.ts';
 import { PgnImportError, fromPgn, pgnDate, toPgn } from './pgn.ts';
 import { dropSession, keepSession, takeSession } from './session.ts';
 import { watchForUpdates } from './updates.ts';
-import { arrow, costLabel, evalLabel, readable, rememberedArrow, square } from './shapes.ts';
+import { arrow, costLabelHtml, evalLabel, readable, rememberedArrow, square } from './shapes.ts';
 import {
   type Verdict,
   isError,
@@ -590,7 +590,7 @@ async function main(): Promise<void> {
    */
   function rejectedShapes(attempts: readonly Attempt[]): DrawShape[] {
     return attempts.flatMap(attempt => [
-      arrow(attempt.uci, 'red', costLabel(attempt.verdict)),
+      arrow(attempt.uci, 'red', costLabelHtml(attempt.verdict)),
       { orig: square(attempt.uci, 2), brush: 'red' },
     ]);
   }
