@@ -709,6 +709,10 @@ async function main(): Promise<void> {
     if (over)
       return over.winner ? `${over.reason} — ${over.winner} wins.` : `Draw: ${over.reason}.`;
     if (thinking) return 'Thinking…';
+    // While reviewing there is no bot to wait for: both sides are yours. Saying
+    // "press ▶ to let it play" here sent people to a button with nothing to step
+    // to, on a branch they had just invented.
+    if (reviewing) return 'Reviewing — both sides are yours. Close the review to play on.';
     // Never claim you can move in a position where it is not your turn: that is
     // the difference between browsing and being stuck.
     if (tree.turn !== you) return 'Bot to move here — press ▶ to let it play.';
@@ -1630,8 +1634,13 @@ async function main(): Promise<void> {
       render();
     };
     buttons.review.onclick = () => {
-      if (reviewing) closeReview();
-      else void runReview();
+      if (reviewing) {
+        closeReview();
+        // Closing it puts you back in a game, and if the bot owes a move in this
+        // position it has to be asked for one. Without this the board sits on a
+        // position where it is not your turn and nothing is going to make it be.
+        void handOver();
+      } else void runReview();
     };
     buttons.newGame.onclick = () => {
       void startGame();
