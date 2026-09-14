@@ -40,6 +40,18 @@ body {
    * where the insets are not zero.
    */
   --usable-height: calc(100svh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+
+  /*
+   * A height that does not move, for the one thing that must not move with it.
+   *
+   * `lvh` is the viewport with the browser's toolbars hidden, and it is the same
+   * number whether they are hidden or not. `svh` is meant to be just as steady
+   * at the other end, but the insets subtracted from it above are not: a phone
+   * browser hides its toolbars as you scroll and the page slides under the
+   * status bar, which is exactly when `env(safe-area-inset-top)` stops being
+   * zero.
+   */
+  --stable-height: 100lvh;
 }
 
 main {
@@ -55,13 +67,19 @@ main {
      broken as it sounds. It cannot happen in a tab, because a tab in portrait
      has no insets to disagree about.
 
+     The height it is capped against has to be one that never changes. Scrolling
+     a phone browser hides its toolbars, which moves the viewport height and the
+     safe-area insets together -- and a board sized from those redraws itself
+     narrower halfway down a scroll, taking everything centred on it along. So
+     the cap reads --stable-height and not the height the stage is laid out in.
+
      The reserve is what guarantees nothing needs scrolling to reach. The bands
      above and below are equal, so it has to be twice the taller of the two: the
      top needs 121px (name, controls, bar) and the bottom 101px (status and the
      buttons that answer it), so 2 x 121 plus slack. It was 14rem, which was
      short, and the buttons under the status could land off the bottom of a short
      window. */
-  max-width: min(100%, var(--usable-height) - 16rem);
+  max-width: min(100%, var(--stable-height) - 16rem);
   margin: 0 auto;
   padding: 0 3px 12px;
 }
