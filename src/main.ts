@@ -45,6 +45,7 @@ import {
   serialiseTree,
 } from './library.ts';
 import { mountLibrary } from './library-view.ts';
+import { ROLE_ORDER, material } from './material.ts';
 import { MistakeMemory } from './memory.ts';
 import { mountMoves } from './moves-view.ts';
 import { PgnImportError, fromPgn, pgnDate, toPgn } from './pgn.ts';
@@ -158,6 +159,11 @@ const buttons = {
   saveGame: element('save-game'),
   update: element('update'),
   playAs: element('play-as'),
+};
+
+const takenRows = {
+  top: element('taken-top'),
+  bottom: element('taken-bottom'),
 };
 
 // Before anything else draws: the title's face is decided per load, and asking
@@ -538,6 +544,7 @@ async function main(): Promise<void> {
       },
     });
     renderEval(fen);
+    renderTaken(fen);
   }
 
   /**
@@ -728,6 +735,41 @@ async function main(): Promise<void> {
     const choice = settings.playAs;
     buttons.playAs.textContent =
       choice === 'switch' ? `Switch → ${other(you)}` : choice === 'white' ? 'White' : 'Black';
+  }
+
+  /**
+   * Who has taken what, above and below the board.
+   *
+   * Each row belongs to the player on that side, and holds the pieces that
+   * player has taken -- so the row nearest you fills up with the bot's pieces.
+   * The number is the running difference, shown only beside whoever is ahead,
+   * because "+0" against "−0" is two ways of saying nothing.
+   */
+  function renderTaken(fen: string): void {
+    const { taken, delta } = material(fen);
+    const rows = { top: other(you), bottom: you } as const;
+
+    for (const [where, side] of Object.entries(rows) as [keyof typeof rows, Color][]) {
+      const row = takenRows[where];
+      const pieces: Node[] = [];
+      for (const role of ROLE_ORDER) {
+        const count = taken[side][role] ?? 0;
+        for (let n = 0; n < count; n++) {
+          const piece = document.createElement('piece');
+          // The colour of the piece taken, which is the other side's.
+          piece.className = `${role} ${other(side)}`;
+          pieces.push(piece);
+        }
+      }
+      const ahead = side === 'white' ? delta : -delta;
+      if (ahead > 0) {
+        const lead = document.createElement('span');
+        lead.className = 'lead';
+        lead.textContent = `+${String(ahead)}`;
+        pieces.push(lead);
+      }
+      row.replaceChildren(...pieces);
+    }
   }
 
   function liveStatus(): string {
@@ -1273,7 +1315,7 @@ async function main(): Promise<void> {
    */
   function applyAppearance(): void {
     const boardEl = element('board');
-    for (const wrap of [boardEl, promotionBox]) {
+    for (const wrap of [boardEl, promotionBox, takenRows.top, takenRows.bottom]) {
       for (const set of PIECE_SETS) {
         wrap.classList.toggle(`set-${set}`, set === settings.pieceSet);
       }

@@ -104,6 +104,25 @@ the branch it started on: step back above it and the bot goes back to normal.
 Everything runs on the phone: Stockfish 18 compiled to WebAssembly, no server, no
 network after the first load.
 
+## What has been taken
+
+A strip against each edge of the board holding the pieces that side has taken,
+and the running difference beside whoever is ahead — `+0` against `−0` is two
+ways of saying nothing, so it appears on one side only. Standard values: a pawn
+is one, a knight and a bishop three, a rook five, a queen nine.
+
+Counted from the position rather than from the moves, so it is right on whatever
+branch of the tree you are standing on and needs no history kept. One thing that
+costs: a promoted pawn is missing from the board and nothing in the position says
+it left by promoting rather than by being taken, so it is listed as captured.
+Counting moves instead would fix the list and break on every branch — and the
+number beside it, the part people read, is summed from the board and is right
+either way.
+
+The strips hold their height empty, since they sit inside the bands that centre
+the board and one appearing on the first capture would shift the board down
+halfway through a game.
+
 ## Choosing sides
 
 The button left of _New game_ cycles **White**, **Black**, **Switch**. It decides

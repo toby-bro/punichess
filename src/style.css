@@ -74,12 +74,14 @@ main {
      the cap reads --stable-height and not the height the stage is laid out in.
 
      The reserve is what guarantees nothing needs scrolling to reach. The bands
-     above and below are equal, so it has to be twice the taller of the two: the
-     top needs 121px (name, controls, bar) and the bottom 101px (status and the
-     buttons that answer it), so 2 x 121 plus slack. It was 14rem, which was
+     above and below are equal, so it has to be twice the taller of the two --
+     the top needs 121px for the name, the controls and the bar, the bottom 101px
+     for the status and the buttons that answer it -- plus the two strips of
+     taken pieces, 20px each, which sit outside the bands against the board. That
+     is 282px before any slack. It was 14rem, which was
      short, and the buttons under the status could land off the bottom of a short
      window. */
-  max-width: min(100%, var(--stable-height) - 16rem);
+  max-width: min(100%, var(--stable-height) - 18rem);
   margin: 0 auto;
   padding: 0 3px 12px;
 }
@@ -116,6 +118,46 @@ main {
 
 .board-row {
   flex: 0 0 auto;
+}
+
+/*
+ * What each side has taken, in a strip against the board.
+ *
+ * A fixed height whether or not there is anything in it. The strips sit inside
+ * the bands that centre the board, and one that appeared on the first capture
+ * would shift the board down half its height in the middle of a game.
+ *
+ * Sized against the board rather than the screen: these are pieces off the board
+ * and they should read as the same pieces, a little smaller.
+ */
+.taken {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  height: 20px;
+  padding: 0 2px;
+  overflow: hidden;
+}
+
+.taken piece {
+  flex: 0 0 auto;
+  display: block;
+  width: 18px;
+  height: 18px;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  /* They overlap slightly, the way a pile of taken pieces does, which keeps a
+     row of eight pawns from being wider than the board. */
+  margin-right: -5px;
+}
+
+.taken .lead {
+  margin-left: 10px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dim);
 }
 
 /* The name, and the way out to the source. */
