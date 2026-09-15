@@ -71,6 +71,8 @@ import {
   saveSettings,
   withColour,
   withSaveOnNew,
+  colourFor,
+  nextPlayAs,
 } from './settings.ts';
 import { Stats } from './stats.ts';
 import { GameTree } from './tree.ts';
@@ -155,6 +157,7 @@ const buttons = {
   expandMoves: element('expand-moves'),
   saveGame: element('save-game'),
   update: element('update'),
+  playAs: element('play-as'),
 };
 
 // Before anything else draws: the title's face is decided per load, and asking
@@ -217,7 +220,8 @@ async function main(): Promise<void> {
   let tree = new GameTree();
 
   /** The colour you play. The bot takes the other one. */
-  let you: Color = settings.playAs;
+  // `switch` has no colour of its own until a game has been played.
+  let you: Color = colourFor(settings.playAs, 'black');
 
   let mode: Mode = { kind: 'play' };
   let thinking = true;
@@ -668,6 +672,7 @@ async function main(): Promise<void> {
     // out of the branch it was asked for turns it off here too.
     punishToggle.checked = punishing();
     keepToggle.checked = settings.saveOnNew;
+    renderPlayAs();
     buttons.reveal.hidden = !stopped;
     // A toggle, not a door: the board stays yours while the answer is showing.
     buttons.reveal.textContent = showing ? 'Hide' : 'Show me';
@@ -710,6 +715,19 @@ async function main(): Promise<void> {
     if (outcomeOf(tree.fen)) return false;
     // A review is an analysis board: both sides are yours to move.
     return reviewing || tree.turn === you;
+  }
+
+  /**
+   * What the colour control says.
+   *
+   * "Switch" names the rule rather than a colour, so it also says which colour
+   * that rule is about to hand you -- otherwise the only way to find out is to
+   * start a game and look.
+   */
+  function renderPlayAs(): void {
+    const choice = settings.playAs;
+    buttons.playAs.textContent =
+      choice === 'switch' ? `Switch → ${other(you)}` : choice === 'white' ? 'White' : 'Black';
   }
 
   function liveStatus(): string {
@@ -759,8 +777,23 @@ async function main(): Promise<void> {
 
   async function startGame(): Promise<void> {
     interrupt();
+
+    /*
+     * Keep the game just finished, if you asked for that and there is one.
+     *
+     * An empty board is not a game. Starting two in a row used to be enough to
+     * put a nameless entry with no moves in it into the list, which is clutter
+     * you then have to go and delete. A game already in the list is left alone:
+     * it has been kept up to date on every move since it went in.
+     */
+    if (settings.saveOnNew && openGameId === undefined && tree.root.children.length > 0) {
+      library.save(currentGame());
+      games.render();
+    }
+
     thinking = true;
-    you = settings.playAs;
+    // The other colour from last time, when that is what was asked for.
+    you = colourFor(settings.playAs, you);
 
     tree = new GameTree();
     cache.clear();
@@ -788,6 +821,8 @@ async function main(): Promise<void> {
     panel.update(settings);
     appearance.update(settings);
     updateScore();
+    // "Switch" names the next colour, which has just become a different one.
+    renderPlayAs();
 
     await engine.newGame();
     board.set({ orientation: you });
@@ -1595,9 +1630,10 @@ async function main(): Promise<void> {
   /** Take over the other side, keeping the position exactly as it stands. */
   async function swapSides(): Promise<void> {
     interrupt();
-    settings = withColour(settings, other(you));
+    const taking = other(you);
+    settings = withColour(settings, taking);
     saveSettings(settings);
-    you = settings.playAs;
+    you = taking;
     panel.update(settings);
     mode = { kind: 'play' };
     board.set({ orientation: you });
@@ -1668,6 +1704,11 @@ async function main(): Promise<void> {
         // position where it is not your turn and nothing is going to make it be.
         void handOver();
       } else void runReview();
+    };
+    buttons.playAs.onclick = () => {
+      settings = withColour(settings, nextPlayAs(settings.playAs));
+      saveSettings(settings);
+      renderPlayAs();
     };
     buttons.newGame.onclick = () => {
       void startGame();

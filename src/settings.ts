@@ -52,9 +52,17 @@ export const BOARD_THEMES = ['brown', 'blue', 'green', 'grey', 'purple', 'slate'
 
 export type BoardTheme = (typeof BOARD_THEMES)[number];
 
+/**
+ * Which colour a new game gives you.
+ *
+ * `switch` means the other one from last time, so a run of games alternates
+ * without anyone having to remember to change it.
+ */
+export type PlayAs = Color | 'switch';
+
 export interface Settings {
   /** The colour you play. The bot takes the other one. */
-  readonly playAs: Color;
+  readonly playAs: PlayAs;
   /** Which pieces to draw. Yours, on this device.  */
   readonly pieceSet: PieceSet;
   /** Which board to draw them on. */
@@ -212,7 +220,8 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
   const result = { ...base };
 
   const playAs = source['playAs'];
-  result.playAs = playAs === 'white' || playAs === 'black' ? playAs : base.playAs;
+  result.playAs =
+    playAs === 'white' || playAs === 'black' || playAs === 'switch' ? playAs : base.playAs;
 
   const saveOnNew = source['saveOnNew'];
   result.saveOnNew = typeof saveOnNew === 'boolean' ? saveOnNew : base.saveOnNew;
@@ -263,8 +272,8 @@ export const withSaveOnNew = (settings: Settings, saveOnNew: boolean): Settings 
   saveOnNew,
 });
 
-/** Switch sides. Callers are expected to start a new game afterwards. */
-export const withColour = (settings: Settings, playAs: Color): Settings => ({
+/** Choose the colour a new game deals you. */
+export const withColour = (settings: Settings, playAs: PlayAs): Settings => ({
   ...settings,
   playAs,
 });
@@ -292,3 +301,18 @@ export function saveSettings(settings: Settings, storage: Storage = globalThis.l
     // Private browsing, quota, storage disabled: play on regardless.
   }
 }
+
+/** The order the colour control cycles in. */
+export const PLAY_AS_ORDER: readonly PlayAs[] = ['white', 'black', 'switch'];
+
+/** The next choice after this one, wrapping. */
+export const nextPlayAs = (current: PlayAs): PlayAs =>
+  PLAY_AS_ORDER[(PLAY_AS_ORDER.indexOf(current) + 1) % PLAY_AS_ORDER.length] ?? 'white';
+
+/**
+ * The colour a new game actually deals, given the one you had last.
+ *
+ * `switch` is the only one that needs telling what came before.
+ */
+export const colourFor = (playAs: PlayAs, previous: Color): Color =>
+  playAs === 'switch' ? (previous === 'white' ? 'black' : 'white') : playAs;

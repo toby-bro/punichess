@@ -106,12 +106,13 @@ network after the first load.
 
 ## Choosing sides
 
-_Swap sides_ hands your colour to the bot and takes its one, **keeping the
-position**. From the starting position that simply means you play Black: the bot
-opens, and the board flips to match.
+The button left of _New game_ cycles **White**, **Black**, **Switch**. It decides
+what the _next_ game deals you, not the one you are in — _Swap sides_ does that,
+keeping the position exactly as it stands.
 
-The choice is remembered, so a new game starts with the colour you last had. Your
-accuracy record follows you rather than staying with the pieces.
+**Switch** gives you the other colour from last time, so a run of games alternates
+without anyone having to remember. The button says which colour that is about to
+be, because otherwise the only way to find out is to start a game and look.
 
 ## Settings
 

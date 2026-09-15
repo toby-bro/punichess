@@ -6,7 +6,9 @@ import {
   DEFAULT_SETTINGS,
   PIECE_SETS,
   PRESETS,
+  colourFor,
   loadSettings,
+  nextPlayAs,
   parseSettings,
   saveSettings,
   withBoardTheme,
@@ -268,5 +270,30 @@ describe('boardTheme', () => {
     const both = withBoardTheme(withPieceSet(DEFAULT_SETTINGS, 'celtic'), 'purple');
     assert.equal(both.pieceSet, 'celtic');
     assert.equal(both.boardTheme, 'purple');
+  });
+});
+
+describe('which colour a new game deals', () => {
+  it('cycles white, black, switch and back', () => {
+    assert.equal(nextPlayAs('white'), 'black');
+    assert.equal(nextPlayAs('black'), 'switch');
+    assert.equal(nextPlayAs('switch'), 'white');
+  });
+
+  it('gives the colour asked for when one was asked for', () => {
+    assert.equal(colourFor('white', 'black'), 'white');
+    assert.equal(colourFor('white', 'white'), 'white');
+    assert.equal(colourFor('black', 'white'), 'black');
+  });
+
+  it('gives the other one from last time when switching', () => {
+    assert.equal(colourFor('switch', 'white'), 'black');
+    assert.equal(colourFor('switch', 'black'), 'white');
+  });
+
+  it('survives storage', () => {
+    assert.equal(parseSettings({ playAs: 'switch' }).playAs, 'switch');
+    // Anything else falls back rather than leaving the board with no colour.
+    assert.equal(parseSettings({ playAs: 'green' }).playAs, DEFAULT_SETTINGS.playAs);
   });
 });
