@@ -140,7 +140,17 @@ main {
   overflow: hidden;
 }
 
+/*
+ * Laid out in a row, which they were not.
+ *
+ * The strip carries `cg-wrap` because that is what makes the chosen piece set's
+ * images apply, and chessground's own rule for a piece inside one is
+ * `position: absolute; top: 0; left: 0` -- it is describing a piece on a board,
+ * placed by a transform. Inherited here it stacked all of them in the strip's
+ * top-left corner, on the same few pixels.
+ */
 .taken piece {
+  position: static;
   flex: 0 0 auto;
   display: block;
   width: 18px;
