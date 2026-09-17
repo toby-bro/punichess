@@ -22,8 +22,56 @@
  *     reload it, and that is the caller's decision, not this module's.
  */
 
-/** How often to ask, while the app is open and in front of you. */
-const CHECK_EVERY_MS = 30 * 60 * 1000;
+/**
+ * The build this bundle was made from, written in at build time.
+ *
+ * Compared against the one the site is publishing to find out whether the code
+ * running here is the code that is deployed.
+ */
+declare const __BUILD_ID__: string;
+
+/**
+ * How often to ask what is published.
+ *
+ * Two minutes, because the asking is a request for a few dozen bytes. It used to
+ * be thirty, and it asked by refetching the worker -- seventeen kilobytes and the
+ * whole install machinery -- so it could not be asked often, and an update took
+ * the better part of an hour to be noticed.
+ */
+const CHECK_EVERY_MS = 2 * 60 * 1000;
+
+/**
+ * And how often to ask the worker directly, whatever the version file said.
+ *
+ * A fallback for the case where version.json cannot be read at all: an old build
+ * that predates it, a deploy that dropped it, a network that returns something
+ * else entirely.
+ */
+const FALLBACK_EVERY_MS = 30 * 60 * 1000;
+
+/**
+ * What build the site is serving, or nothing if it will not say.
+ *
+ * `no-store` keeps the browser's own cache out of it. Nothing can be done about
+ * the CDN in front of GitHub Pages: it holds everything for up to ten minutes
+ * and ignores every request header asking it not to -- no-cache, Pragma, max-age
+ * zero, and a unique query string, all measured, all served the same aged copy.
+ * Ten minutes is therefore the floor here, and the thirty-minute timer above it
+ * was the part worth fixing.
+ */
+async function publishedBuild(): Promise<string | undefined> {
+  try {
+    const response = await fetch(`${import.meta.env.BASE_URL}version.json`, { cache: 'no-store' });
+    if (!response.ok) return undefined;
+    const body: unknown = await response.json();
+    const build = (body as { build?: unknown }).build;
+    return typeof build === 'string' ? build : undefined;
+  } catch {
+    // Offline, or something that is not the file we asked for. Neither is worth
+    // making a noise about; the next check is two minutes away.
+    return undefined;
+  }
+}
 
 export interface UpdateHooks {
   /**
@@ -53,10 +101,23 @@ export function watchForUpdates(hooks: UpdateHooks): void {
   void navigator.serviceWorker
     .register(`${base}sw.js`, { scope: base, updateViaCache: 'none' })
     .then(registration => {
+      /*
+       * Ask what is published, and only wake the worker when it has changed.
+       *
+       * The expensive half then runs once per deploy instead of once per tick,
+       * which is what makes checking every couple of minutes affordable.
+       */
       const check = (): void => {
-        void registration.update();
+        void publishedBuild().then(published => {
+          if (published !== undefined && published !== __BUILD_ID__) {
+            void registration.update();
+          }
+        });
       };
       setInterval(check, CHECK_EVERY_MS);
+      setInterval(() => {
+        void registration.update();
+      }, FALLBACK_EVERY_MS);
       // The moment that matters most: you have just opened the app again.
       document.addEventListener('visibilitychange', () => {
         if (!document.hidden) check();

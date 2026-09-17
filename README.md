@@ -308,6 +308,20 @@ is announcing. Either way the game in progress is saved first, even if you never
 pressed Save: a reload throws away everything the page is holding, and an unsaved
 game is held nowhere else.
 
+How quickly it notices is set by two things, only one of which is ours. The app
+asks what build the site is publishing — `version.json`, a few dozen bytes,
+written at build time and deliberately outside the worker's precache — every two
+minutes, and wakes the worker only when the answer has changed, so the expensive
+half runs once per deploy rather than once per check.
+
+Under that sits a floor nothing can move. GitHub Pages serves everything through
+a CDN with `max-age=600`, and it ignores every request header asking for
+something fresher: `no-cache`, `Pragma: no-cache`, `max-age=0` and a unique query
+string were each measured against it and each came back the same aged copy.
+`updateViaCache: 'none'` only bypasses the _browser's_ cache. So ten minutes is
+the worst case, and the thirty-minute timer that used to sit on top of it was the
+part worth fixing.
+
 Nothing needs cache-busting by hand. Vite already gives every script and
 stylesheet a content hash in its filename, so a changed file is a different URL
 and can never be served stale. Only two files cannot work that way -- `index.html`

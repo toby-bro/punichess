@@ -1,7 +1,36 @@
-import { defineConfig } from 'vite';
+import { type Plugin, defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
+/**
+ * What this build is, for the app to compare itself against.
+ *
+ * The commit when a workflow built it, a timestamp otherwise, which is enough to
+ * tell one local build from the next.
+ */
+const BUILD_ID = process.env['GITHUB_SHA'] ?? String(Date.now());
+
+/**
+ * Write that id where the running app can read it.
+ *
+ * A few dozen bytes, so it can be asked for often. Deliberately .json, which is
+ * outside the worker's precache globs -- a version file served from the cache
+ * that is meant to tell you the cache is stale would be a fine joke and no use.
+ */
+function versionFile(): Plugin {
+  return {
+    name: 'punichess-version',
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'version.json',
+        source: JSON.stringify({ build: BUILD_ID, built: new Date().toISOString() }),
+      });
+    },
+  };
+}
+
 export default defineConfig({
+  define: { __BUILD_ID__: JSON.stringify(BUILD_ID) },
   // Set BASE to "/<repo>/" when deploying to a project GitHub Pages site.
   base: process.env['BASE'] ?? '/',
   server: {
@@ -14,6 +43,7 @@ export default defineConfig({
   worker: { format: 'es' },
   build: { target: 'es2022' },
   plugins: [
+    versionFile(),
     VitePWA({
       registerType: 'autoUpdate',
       // Registered by hand in src/updates.ts: the injected one registers on load
