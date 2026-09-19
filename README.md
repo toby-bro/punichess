@@ -21,6 +21,11 @@ Two interruptions, armed by different rules:
 | Any other move of yours          | your move loses ≥ 1.1 pawns  | same                                    |
 | Either side, a forced mate is on | mate missed or walked into   | always fires, never suppressed          |
 
+A deliberate error is never a king move. A king wandering into the middle of the
+board, or off its castling square for nothing, is the bot shuffling rather than
+a mistake anybody makes, and it accounted for a good share of what the error hunt
+used to turn up.
+
 The bot never announces its errors. Spotting them is the entire point. Three
 counters keep score: **spotted** (you punished one unaided), **missed** (you were
 stopped for it, or asked to be shown), and **made** (your own moves that got you

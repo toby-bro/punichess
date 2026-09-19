@@ -7,7 +7,7 @@
  * are punishable -- see `pickBlunder` and `pickMateTrap`.
  */
 
-import { capturesTo, fenAfter, moveKind, positionHash } from './chess.ts';
+import { capturesTo, fenAfter, kingSquareOf, moveKind, positionHash } from './chess.ts';
 import { DECIDED_CP } from './referee.ts';
 import type { Settings } from './settings.ts';
 import type { PvLine } from './uci.ts';
@@ -360,9 +360,24 @@ export async function pickBlunder(
 ): Promise<Candidate | undefined> {
   const random = policy.random ?? Math.random;
   const { blunderMin, blunderMax } = policy.settings;
+  /*
+   * Never the king.
+   *
+   * A king that wanders into the middle of the board, or off its castling
+   * square for nothing, is not an error anybody makes and is not one worth being
+   * shown. It is the bot shuffling, and it accounted for a good share of what
+   * the error hunt turned up: "Kd7", "Kc8", "Ke8" and nothing to see.
+   *
+   * It costs something in an endgame, where the king is most of what moves and
+   * stepping it to the wrong square is the classic mistake. Worth it: those
+   * positions are also the ones where the game is usually decided already, and
+   * erring there is switched off anyway.
+   */
+  const kingAt = kingSquareOf(fen);
   const band = wide.filter(line => {
     const loss = lossOf(best, line);
-    return loss >= blunderMin && loss <= blunderMax;
+    if (loss < blunderMin || loss > blunderMax) return false;
+    return kingAt === undefined || origOf(line.moves[0]) !== kingAt;
   });
   const candidates = sampleByCost(band, best, MAX_PROBES, random);
 

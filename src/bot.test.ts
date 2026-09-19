@@ -170,8 +170,12 @@ describe('pickBlunder', () => {
   it('accepts one whose answer is a capture into a defended square', async () => {
     // Same shape, but the knight is defended by the e2 pawn after Qxf3, so the
     // reply is a real decision rather than a free lunch.
-    const fen = '4k3/8/8/7q/8/5N2/4P3/4K3 w - - 0 1';
-    const candidates = search(['f3g1', 0], ['e1f1', -150]);
+    //
+    // The rook is here to give White something idle to do: the error has to be
+    // a move the bot would actually be offered, and a king move is not one of
+    // those any more.
+    const fen = '4k3/8/8/7q/8/5N2/4P3/R3K3 w - - 0 1';
+    const candidates = search(['f3g1', 0], ['a1b1', -150]);
     const best = candidates[0];
     assert.ok(best);
     const found = await pickBlunder(
@@ -180,7 +184,7 @@ describe('pickBlunder', () => {
       best,
       candidates,
     );
-    assert.equal(found?.uci, 'e1f1');
+    assert.equal(found?.uci, 'a1b1');
   });
 
   it('refuses an error whose refutation is not clear-cut', async () => {
@@ -740,5 +744,38 @@ describe('pickTrap', () => {
       searched <= MAX_TRAP_SEARCHES,
       `spent ${String(searched)} searches, allowed ${String(MAX_TRAP_SEARCHES)}`,
     );
+  });
+});
+
+describe('king moves are not errors worth making', () => {
+  it('is never offered one, however well it scores as an error', async () => {
+    // Every candidate in the band is a king move. Walking off the castling
+    // square for nothing is the bot shuffling, not a mistake to be shown.
+    const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    const wide = search(['e2e4', 0], ['e1e2', -200]);
+    const [best] = wide;
+    assert.ok(best);
+    let probed = 0;
+    const probe: Search = () => {
+      probed++;
+      return Promise.resolve(search(['d7d5', 400], ['b8c6', 0]));
+    };
+    const found = await pickBlunder(policy({ probe, random: () => 0.5 }), fen, best, wide);
+    assert.equal(found, undefined);
+    assert.equal(probed, 0, 'and not a search spent finding that out');
+  });
+
+  it('still offers everything else in the band', async () => {
+    const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    const wide = search(['e2e4', 0], ['e1e2', -200], ['g1h3', -210]);
+    const [best] = wide;
+    assert.ok(best);
+    const found = await pickBlunder(
+      policy({ probe: replying(['d7d5', 400], ['b8c6', 0]), random: () => 0.5 }),
+      fen,
+      best,
+      wide,
+    );
+    assert.equal(found?.uci, 'g1h3', 'the knight is still fair game');
   });
 });

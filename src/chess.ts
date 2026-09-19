@@ -172,6 +172,18 @@ export function moveKind(fen: string, uci: string): MoveKind {
 }
 
 /**
+ * Where the side to move keeps its king.
+ *
+ * One parse for a whole list of candidate moves, which is why this returns the
+ * square rather than answering "is this a king move" per move.
+ */
+export function kingSquareOf(fen: string): string | undefined {
+  const pos = position(fen);
+  const square = pos.board.kingOf(pos.turn);
+  return square === undefined ? undefined : makeSquare(square);
+}
+
+/**
  * Every legal way to capture whatever stands on a square.
  *
  * Used to find out what a piece is being offered to, and at what. A trap is only
