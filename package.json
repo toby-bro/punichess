@@ -41,7 +41,7 @@
   "dependencies": {
     "chessground": "^9.2.1",
     "chessops": "^0.15.1",
-    "stockfish": "^18.0.8"
+    "stockfish": "^19.0.0"
   },
   "private": true
 }
