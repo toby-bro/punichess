@@ -16,17 +16,19 @@ updates:
         patterns: ['*']
         update-types: [minor, patch]
 
-    ignore:
-      # TypeScript 7 is the Go rewrite, and typescript-eslint 8 declares
-      # `peer typescript: >=4.8.4 <6.1.0`. npm refuses the combination outright,
-      # so every weekly run opens a pull request whose very first step cannot
-      # install. Nothing here is wrong and there is nothing to fix in it.
-      #
-      # Lift this the moment typescript-eslint ships a release whose peer range
-      # admits 7; the point is to stop reopening a pull request that cannot pass,
-      # not to stay on 6 for ever.
-      - dependency-name: typescript
-        update-types: [version-update:semver-major]
+    # No `ignore:` here, on purpose.
+    #
+    # TypeScript 7 is the Go rewrite and typescript-eslint declares
+    # `peer typescript: >=4.8.4 <6.1.0`, so npm refuses the combination and the
+    # weekly pull request cannot install. It was ignored for a while to stop that
+    # reopening; it is not any more.
+    #
+    # An ignore rule is unconditional. It does not lapse when the upstream peer
+    # range opens, so the bump would simply never be offered again and nothing
+    # would say why -- a workaround for somebody else's constraint, kept in this
+    # repository, outliving the constraint. The failing pull request is the
+    # better signal: it is not ours to fix, it says so every week, and it will
+    # start passing by itself on the day typescript-eslint allows 7.
 
   # The actions were all a major or two behind before anyone noticed, which is
   # exactly the kind of drift nobody goes looking for.
