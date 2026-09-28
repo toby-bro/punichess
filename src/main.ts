@@ -216,7 +216,7 @@ function roleLetter(button: Element): string {
 }
 
 async function main(): Promise<void> {
-  const engine = new Engine(`${import.meta.env.BASE_URL}engine/stockfish-18-lite-single.js`);
+  const engine = new Engine(`${import.meta.env.BASE_URL}engine/stockfish-lite-single.js`);
   const cache = new PositionCache();
   const stats = new Stats();
   /** What you got wrong in *this* game, saved and reopened along with it. */
