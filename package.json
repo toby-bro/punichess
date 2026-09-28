@@ -25,6 +25,9 @@
     "bot:why": "node scripts/blunderwhy.mjs"
   },
   "license": "GPL-3.0-or-later",
+  "engines": {
+    "node": ">=24"
+  },
   "type": "module",
   "devDependencies": {
     "@eslint/js": "^10.0.1",

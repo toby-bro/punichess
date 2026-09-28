@@ -334,6 +334,19 @@ and `sw.js`, because something has to sit at a fixed address for any of it to be
 found -- and the worker covers both: `index.html` is precached with a content
 revision, and `sw.js` is fetched past the HTTP cache on every check.
 
+### Node
+
+`engines` asks for Node 24 or newer. The test runner runs `.ts` files directly,
+with no build step and no loader, which needs a Node recent enough to strip types
+by itself; on an older one the suite fails with a syntax error that says nothing
+about versions.
+
+It is a declaration, not a gate: npm warns and carries on. Making it refuse
+outright means `engine-strict` in an `.npmrc`, and that is [known to stop
+Dependabot opening or updating pull
+requests](https://github.com/dependabot/dependabot-core/issues/14368) — a poor
+trade for a warning that is already printed.
+
 ### Changing dependencies
 
 `node_modules` deliberately lives only inside the container. After editing
