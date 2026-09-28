@@ -336,6 +336,15 @@ revision, and `sw.js` is fetched past the HTTP cache on every check.
 
 ### Node
 
+The version CI runs is read out of the Dockerfile. Dependabot updates the base
+image — that is an ecosystem it manages — and does not touch `node-version` in a
+workflow, which is an input to an action rather than an action version. Two
+numbers meaning the same thing, one of which moves on its own, is a drift waiting
+to happen; there is one number now and the workflows read it.
+
+`engines` stays a floor rather than following along. It says what is supported,
+not what is used.
+
 `engines` asks for Node 24 or newer. The test runner runs `.ts` files directly,
 with no build step and no loader, which needs a Node recent enough to strip types
 by itself; on an older one the suite fails with a syntax error that says nothing

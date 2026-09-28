@@ -20,9 +20,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # The Dockerfile is where the Node version lives, because it is the one
+      # Dependabot actually updates: it manages the base image, and it does not
+      # touch `node-version` here -- that is an input to an action, not an action
+      # version, so it would have sat on 24 while the container walked on to 26
+      # and beyond. Reading it keeps one number instead of two that agree by
+      # someone remembering.
+      - id: node
+        run: sed -n 's/^FROM node:\([0-9][0-9]*\).*/version=\1/p' Dockerfile >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: ${{ steps.node.outputs.version }}
           cache: npm
       - run: npm ci --ignore-scripts
       # BASE must match the site's path. A custom domain serves from the root,
